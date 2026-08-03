@@ -1,0 +1,120 @@
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+
+@theme inline {
+    --font-sans:
+        Instrument Sans, ui-sans-serif, system-ui, sans-serif,
+        'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
+        'Noto Color Emoji';
+
+    /* Нейтральная палитра интерфейса. Компоненты продолжают писать
+       bg-slate-900 / border-slate-700 / text-slate-100, а конкретные цвета
+       подставляет активная тема через data-theme на <html>. */
+    --color-slate-950: var(--ui-950);
+    --color-slate-900: var(--ui-900);
+    --color-slate-800: var(--ui-800);
+    --color-slate-700: var(--ui-700);
+    --color-slate-600: var(--ui-600);
+    --color-slate-500: var(--ui-500);
+    --color-slate-400: var(--ui-400);
+    --color-slate-300: var(--ui-300);
+    --color-slate-200: var(--ui-200);
+    --color-slate-100: var(--ui-100);
+
+    /* Акцентная палитра — тем же приёмом поверх blue-*. */
+    --color-blue-300: var(--accent-300);
+    --color-blue-400: var(--accent-400);
+    --color-blue-500: var(--accent-500);
+    --color-blue-600: var(--accent-600);
+}
+
+/* Cosmic — тема по умолчанию, привычный тёмно-синий сланец. */
+:root,
+[data-theme='cosmic'] {
+    --ui-950: #05070d;
+    --ui-900: #0f172a;
+    --ui-800: #1e293b;
+    --ui-700: #334155;
+    --ui-600: #475569;
+    --ui-500: #64748b;
+    --ui-400: #94a3b8;
+    --ui-300: #cbd5e1;
+    --ui-200: #e2e8f0;
+    --ui-100: #f1f5f9;
+
+    --accent-300: #93c5fd;
+    --accent-400: #60a5fa;
+    --accent-500: #3b82f6;
+    --accent-600: #2563eb;
+}
+
+/* Midnight — холоднее и синее. */
+[data-theme='midnight'] {
+    --ui-950: #020617;
+    --ui-900: #0c1631;
+    --ui-800: #17244a;
+    --ui-700: #24365f;
+    --ui-600: #37507f;
+    --ui-500: #5573a8;
+    --ui-400: #8fa8cc;
+    --ui-300: #c2d2e8;
+    --ui-200: #dfe8f4;
+    --ui-100: #f0f5fb;
+
+    --accent-300: #7dd3fc;
+    --accent-400: #38bdf8;
+    --accent-500: #0ea5e9;
+    --accent-600: #0284c7;
+}
+
+/* Cyberpunk — фиолетовая база с пурпурным акцентом. */
+[data-theme='cyberpunk'] {
+    --ui-950: #0d0418;
+    --ui-900: #1b0b2e;
+    --ui-800: #2c1148;
+    --ui-700: #431d69;
+    --ui-600: #5b2a8c;
+    --ui-500: #7c3fb5;
+    --ui-400: #a97fd8;
+    --ui-300: #d3bcee;
+    --ui-200: #e8dcf7;
+    --ui-100: #f5eefc;
+
+    --accent-300: #f0abfc;
+    --accent-400: #e879f9;
+    --accent-500: #d946ef;
+    --accent-600: #c026d3;
+}
+
+/* Light — та же шкала, развёрнутая наоборот: 950 становится самым светлым,
+   100 — самым тёмным, поэтому bg-slate-900 даёт белую панель, а
+   text-slate-100 — тёмный текст. */
+[data-theme='light'] {
+    --ui-950: #ffffff;
+    --ui-900: #ffffff;
+    --ui-800: #f1f5f9;
+    --ui-700: #cbd5e1;
+    --ui-600: #94a3b8;
+    --ui-500: #64748b;
+    --ui-400: #475569;
+    --ui-300: #334155;
+    --ui-200: #1e293b;
+    --ui-100: #0f172a;
+
+    --accent-300: #1d4ed8;
+    --accent-400: #2563eb;
+    --accent-500: #3b82f6;
+    --accent-600: #2563eb;
+}
+
+/* Плавный переход при смене темы, но не в ущерб пользователям,
+   которые просили меньше движения. */
+@media (prefers-reduced-motion: no-preference) {
+    body {
+        transition:
+            background-color 0.25s ease,
+            color 0.25s ease;
+    }
+}
