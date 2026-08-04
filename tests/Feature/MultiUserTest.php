@@ -44,6 +44,53 @@ test('root can create a user, which appears as a node in the admin space', funct
     ]);
 });
 
+test('root can reset a user\'s password and they can log in with it', function () {
+    $this->actingAs($this->root);
+
+    $created = $this->postJson('/api/admin/users', [
+        'name' => 'Ada Lovelace',
+        'username' => 'ada2',
+        'email' => 'ada2@example.com',
+        'password' => 'the original password',
+    ])->json();
+
+    $this->putJson("/api/admin/users/{$created['user']['id']}/password", [
+        'password' => 'a brand new password',
+    ])->assertStatus(200);
+
+    $this->post('/logout');
+
+    $this->post('/login', [
+        'username' => 'ada2',
+        'password' => 'a brand new password',
+    ])->assertRedirect('/');
+});
+
+test('a password reset must be at least 8 characters', function () {
+    $this->actingAs($this->root);
+
+    $created = $this->postJson('/api/admin/users', [
+        'name' => 'Ada Lovelace',
+        'username' => 'ada3',
+        'email' => 'ada3@example.com',
+        'password' => 'the original password',
+    ])->json();
+
+    $this->putJson("/api/admin/users/{$created['user']['id']}/password", [
+        'password' => 'short',
+    ])->assertStatus(422);
+});
+
+test('a non-root user cannot reset anyone\'s password', function () {
+    $stranger = User::factory()->create();
+    $other = User::factory()->create();
+    $this->actingAs($stranger);
+
+    $this->putJson("/api/admin/users/{$other->id}/password", [
+        'password' => 'a brand new password',
+    ])->assertStatus(403);
+});
+
 test('a non-root user cannot manage users', function () {
     $stranger = User::factory()->create();
     $this->actingAs($stranger);

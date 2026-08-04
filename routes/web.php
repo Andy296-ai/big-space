@@ -25,6 +25,7 @@ Route::middleware('auth')->group(function () {
 
         // Пользователи — узлы в Admin-пространстве; управляет только root.
         Route::post('/admin/users', [UserController::class, 'store']);
+        Route::put('/admin/users/{user}/password', [UserController::class, 'updatePassword']);
         Route::delete('/admin/users/{user}', [UserController::class, 'destroy']);
 
         // Всё, что привязано к конкретному пространству: владелец или root.

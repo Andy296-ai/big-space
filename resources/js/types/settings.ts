@@ -207,6 +207,13 @@ export type TranslationKeys = {
     displayNameLabel: string;
     userEmailLabel: string;
     createUserAction: string;
+    resetPasswordAction: string;
+    resetPasswordTitle: string;
+    newPasswordLabel: string;
+    confirmPasswordLabel: string;
+    passwordTooShort: string;
+    passwordsDontMatch: string;
+    genericErrorPrefix: string;
     settingsTitle: string;
     settingsDesc: string;
     tabAppearance: string;
@@ -416,6 +423,13 @@ export const translations: Record<Language, TranslationKeys> = {
         displayNameLabel: 'Display name',
         userEmailLabel: 'Email',
         createUserAction: 'Create User',
+        resetPasswordAction: 'Reset Password',
+        resetPasswordTitle: 'Reset password',
+        newPasswordLabel: 'New password (min. 8 characters)',
+        confirmPasswordLabel: 'Confirm password',
+        passwordTooShort: 'Password must be at least 8 characters.',
+        passwordsDontMatch: 'Passwords do not match.',
+        genericErrorPrefix: 'Error: {error}',
         settingsTitle: 'System Settings',
         settingsDesc: 'Language, theme, node layout and visual effects',
         tabAppearance: 'Appearance',
@@ -484,7 +498,8 @@ export const translations: Record<Language, TranslationKeys> = {
         positionSectionLabel: 'Position in space',
         posXLabel: 'X',
         posYLabel: 'Y',
-        rootPositionHint: 'Root nodes only — children are placed automatically.',
+        rootPositionHint:
+            'Root nodes only — children are placed automatically.',
         structureSectionLabel: 'Structure',
         viewStructureAction: 'View structure',
         structureEmptyLabel: 'This space is empty.',
@@ -634,6 +649,13 @@ export const translations: Record<Language, TranslationKeys> = {
         displayNameLabel: 'Отображаемое имя',
         userEmailLabel: 'Email',
         createUserAction: 'Создать пользователя',
+        resetPasswordAction: 'Сбросить пароль',
+        resetPasswordTitle: 'Сброс пароля',
+        newPasswordLabel: 'Новый пароль (минимум 8 символов)',
+        confirmPasswordLabel: 'Повторите пароль',
+        passwordTooShort: 'Пароль должен быть не короче 8 символов.',
+        passwordsDontMatch: 'Пароли не совпадают.',
+        genericErrorPrefix: 'Ошибка: {error}',
         settingsTitle: 'Настройки системы',
         settingsDesc: 'Язык, тема, расстановка узлов и визуальные эффекты',
         tabAppearance: 'Оформление',
@@ -702,7 +724,8 @@ export const translations: Record<Language, TranslationKeys> = {
         positionSectionLabel: 'Позиция в пространстве',
         posXLabel: 'X',
         posYLabel: 'Y',
-        rootPositionHint: 'Только для корневых узлов — дочерние размещаются автоматически.',
+        rootPositionHint:
+            'Только для корневых узлов — дочерние размещаются автоматически.',
         structureSectionLabel: 'Структура',
         viewStructureAction: 'Смотреть структуру',
         structureEmptyLabel: 'Это пространство пустое.',
@@ -853,6 +876,13 @@ export const translations: Record<Language, TranslationKeys> = {
         displayNameLabel: 'Номи намоишӣ',
         userEmailLabel: 'Email',
         createUserAction: 'Сохтани корбар',
+        resetPasswordAction: 'Бознишонии рамз',
+        resetPasswordTitle: 'Бознишонии рамз',
+        newPasswordLabel: 'Рамзи нав (на кам аз 8 аломат)',
+        confirmPasswordLabel: 'Рамзро такрор кунед',
+        passwordTooShort: 'Рамз бояд на кам аз 8 аломат бошад.',
+        passwordsDontMatch: 'Рамзҳо мувофиқат намекунанд.',
+        genericErrorPrefix: 'Хато: {error}',
         settingsTitle: 'Танзимоти система',
         settingsDesc: 'Забон, мавзӯъ, ҷойгиркунии гузарҳо ва эффектҳо',
         tabAppearance: 'Намуди зоҳирӣ',
@@ -920,7 +950,8 @@ export const translations: Record<Language, TranslationKeys> = {
         positionSectionLabel: 'Мавқеъ дар фазо',
         posXLabel: 'X',
         posYLabel: 'Y',
-        rootPositionHint: 'Танҳо барои гузарҳои реша — фарзандон худкор ҷойгир мешаванд.',
+        rootPositionHint:
+            'Танҳо барои гузарҳои реша — фарзандон худкор ҷойгир мешаванд.',
         structureSectionLabel: 'Сохтор',
         viewStructureAction: 'Дидани сохтор',
         structureEmptyLabel: 'Ин фазо холӣ аст.',
@@ -954,7 +985,8 @@ export const translations: Record<Language, TranslationKeys> = {
         deleteAction: 'Нест кардан',
         copyNode: 'Нусхабардорӣ',
         copyNodeTitle: 'Нусхабардории гузар',
-        copyNodeSubtitle: 'Нусха бардоштани «{name}» ҳамроҳ бо тамоми зершохааш',
+        copyNodeSubtitle:
+            'Нусха бардоштани «{name}» ҳамроҳ бо тамоми зершохааш',
         copyTargetLabel: 'Нусхаро пайваст кардан ба',
         copyNewRootOption: '— Решаи нави мустақил —',
         copyAction: 'Нусхабардорӣ',
@@ -1003,7 +1035,8 @@ export const translations: Record<Language, TranslationKeys> = {
         reduceMotionLabel: 'Кам кардани аниматсия',
         shortcutsLabel: 'Тугмаҳои зуд',
         shortcutSearch: 'Фокус ба ҷустуҷӯ',
-        shortcutAddNode: 'Иловаи фарзанд (реша, агар чизе интихоб нашуда бошад)',
+        shortcutAddNode:
+            'Иловаи фарзанд (реша, агар чизе интихоб нашуда бошад)',
         shortcutEdit: 'Таҳрири гузари интихобшуда',
         shortcutLink: 'Пайванди гузари интихобшуда',
         shortcutDelete: 'Нест кардани гузари интихобшуда',
@@ -1070,6 +1103,13 @@ export const translations: Record<Language, TranslationKeys> = {
         displayNameLabel: 'نام نمایشی',
         userEmailLabel: 'ایمیل',
         createUserAction: 'ایجاد کاربر',
+        resetPasswordAction: 'بازنشانی رمز عبور',
+        resetPasswordTitle: 'بازنشانی رمز عبور',
+        newPasswordLabel: 'رمز عبور جدید (حداقل ۸ نویسه)',
+        confirmPasswordLabel: 'تکرار رمز عبور',
+        passwordTooShort: 'رمز عبور باید حداقل ۸ نویسه باشد.',
+        passwordsDontMatch: 'رمزهای عبور یکسان نیستند.',
+        genericErrorPrefix: 'خطا: {error}',
         settingsTitle: 'تنظیمات سیستم',
         settingsDesc: 'زبان، تم، چیدمان گره‌ها و جلوه‌های بصری',
         tabAppearance: 'ظاهر',
@@ -1137,7 +1177,8 @@ export const translations: Record<Language, TranslationKeys> = {
         positionSectionLabel: 'موقعیت در فضا',
         posXLabel: 'X',
         posYLabel: 'Y',
-        rootPositionHint: 'فقط برای گره‌های ریشه — فرزندان به‌طور خودکار جای‌گذاری می‌شوند.',
+        rootPositionHint:
+            'فقط برای گره‌های ریشه — فرزندان به‌طور خودکار جای‌گذاری می‌شوند.',
         structureSectionLabel: 'ساختار',
         viewStructureAction: 'مشاهده ساختار',
         structureEmptyLabel: 'این فضا خالی است.',

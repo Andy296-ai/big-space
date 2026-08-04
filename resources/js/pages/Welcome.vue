@@ -11,6 +11,7 @@ import HudOverlay from '../components/HudOverlay.vue';
 import LinkNodeDialog from '../components/LinkNodeDialog.vue';
 import Minimap from '../components/Minimap.vue';
 import NodeInfoDialog from '../components/NodeInfoDialog.vue';
+import ResetPasswordModal from '../components/ResetPasswordModal.vue';
 import SettingsPanel from '../components/SettingsPanel.vue';
 import SpaceChooserModal from '../components/SpaceChooserModal.vue';
 import type { SpaceItem } from '../components/SpaceChooserModal.vue';
@@ -54,6 +55,9 @@ const showEditModal = ref(false);
 const showLinkModal = ref(false);
 const showCopyModal = ref(false);
 const showDeleteModal = ref(false);
+const showResetPasswordModal = ref(false);
+const resetPasswordError = ref<string | null>(null);
+const resetPasswordSaving = ref(false);
 const addModalParentNode = ref<NodeData | null>(null);
 
 // Снимок удалённого хранится на сервере — здесь только одноразовый токен на него.
@@ -138,8 +142,14 @@ watch(
 );
 
 const filteredNodeIds = computed<Set<number> | null>(() => {
-    const { searchQuery, maxDepth, leavesOnly, tagQuery, createdFrom, createdTo } =
-        filterState.value;
+    const {
+        searchQuery,
+        maxDepth,
+        leavesOnly,
+        tagQuery,
+        createdFrom,
+        createdTo,
+    } = filterState.value;
     const isFiltering =
         searchQuery ||
         maxDepth !== null ||
@@ -331,10 +341,13 @@ async function uploadLogo(nodeId: number, file: File) {
     const form = new FormData();
     form.append('logo', file);
 
-    await apiFetch(`/api/spaces/${props.currentSpace.id}/nodes/${nodeId}/logo`, {
-        method: 'POST',
-        body: form,
-    });
+    await apiFetch(
+        `/api/spaces/${props.currentSpace.id}/nodes/${nodeId}/logo`,
+        {
+            method: 'POST',
+            body: form,
+        },
+    );
 }
 
 async function handleRemoveAttachment(attachmentId: number) {
@@ -430,7 +443,8 @@ const isAnyModalOpen = computed(
         showEditModal.value ||
         showLinkModal.value ||
         showCopyModal.value ||
-        showDeleteModal.value,
+        showDeleteModal.value ||
+        showResetPasswordModal.value,
 );
 
 /** Пока фокус в поле ввода, буквенные хоткеи должны просто печататься как текст. */
@@ -461,6 +475,7 @@ function handleGlobalKeydown(event: KeyboardEvent) {
             showLinkModal.value = false;
             showCopyModal.value = false;
             showDeleteModal.value = false;
+            showResetPasswordModal.value = false;
         } else if (selectedNode.value) {
             selectedNode.value = null;
         }
@@ -729,6 +744,37 @@ async function handleCopyNode(payload: { parent_id: number | null }) {
     }
 }
 
+async function handleResetPassword(password: string) {
+    if (!selectedNode.value?.linked_user_id) {
+        return;
+    }
+
+    resetPasswordSaving.value = true;
+    resetPasswordError.value = null;
+
+    try {
+        const res = await apiFetch(
+            `/api/admin/users/${selectedNode.value.linked_user_id}/password`,
+            { method: 'PUT', body: JSON.stringify({ password }) },
+        );
+
+        if (!res.ok) {
+            const data = await res.json();
+            resetPasswordError.value =
+                data.message ?? data.error ?? 'Request failed';
+
+            return;
+        }
+
+        showResetPasswordModal.value = false;
+    } catch (err) {
+        console.error('Failed to reset password:', err);
+        resetPasswordError.value = 'Network error';
+    } finally {
+        resetPasswordSaving.value = false;
+    }
+}
+
 async function handleConfirmDelete(deletionIds: number[]) {
     showDeleteModal.value = false;
 
@@ -966,6 +1012,10 @@ async function handleDeleteSpace(spaceId: number) {
             @open-edit="showEditModal = true"
             @open-link="showLinkModal = true"
             @open-copy="showCopyModal = true"
+            @open-reset-password="
+                resetPasswordError = null;
+                showResetPasswordModal = true;
+            "
             @delete="showDeleteModal = true"
         />
 
@@ -1012,6 +1062,15 @@ async function handleDeleteSpace(spaceId: number) {
             :all-nodes="nodes"
             @close="showCopyModal = false"
             @submit="handleCopyNode"
+        />
+
+        <ResetPasswordModal
+            v-if="showResetPasswordModal && selectedNode"
+            :node="selectedNode"
+            :error="resetPasswordError"
+            :is-saving="resetPasswordSaving"
+            @close="showResetPasswordModal = false"
+            @submit="handleResetPassword"
         />
 
         <DeleteConfirmModal

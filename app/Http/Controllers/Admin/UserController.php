@@ -75,6 +75,20 @@ class UserController extends Controller
         return response()->json(['user' => $user, 'node' => $node], 201);
     }
 
+    /** Root сбрасывает пароль любому пользователю (включая себя) — самообслуживания для остальных пока нет. */
+    public function updatePassword(Request $request, User $user): JsonResponse
+    {
+        abort_unless($request->user()->is_root, 403);
+
+        $validated = $request->validate([
+            'password' => ['required', 'string', 'min:8'],
+        ]);
+
+        $user->update(['password' => Hash::make($validated['password'])]);
+
+        return response()->json(['message' => 'Password updated successfully']);
+    }
+
     /** Удаляет учётку и её узел (вместе с узлами-пространствами под ним). Личные пространства пользователя остаются, но теряют владельца. */
     public function destroy(Request $request, User $user, GraphRepository $graphRepo): JsonResponse
     {

@@ -10,6 +10,7 @@ import {
     Edit3,
     Eye,
     GitBranch,
+    KeyRound,
     Layers,
     Link,
     MapPin,
@@ -39,6 +40,7 @@ const emit = defineEmits<{
     (e: 'open-edit'): void;
     (e: 'open-link'): void;
     (e: 'open-copy'): void;
+    (e: 'open-reset-password'): void;
     (e: 'delete', nodeId: number): void;
 }>();
 
@@ -310,6 +312,17 @@ onBeforeUnmount(() => destroyMap());
                 <span>{{ t.viewStructureAction }}</span>
             </button>
 
+            <!-- Сброс пароля: только у узлов-пользователей в Admin -->
+            <button
+                v-if="node.linked_user_id"
+                type="button"
+                @click="emit('open-reset-password')"
+                class="flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/50 px-3 py-2 text-xs font-semibold text-slate-200 transition-colors hover:bg-slate-700"
+            >
+                <KeyRound class="h-3.5 w-3.5 text-amber-400" />
+                <span>{{ t.resetPasswordAction }}</span>
+            </button>
+
             <!-- Файлы и ссылки: только если прикреплены -->
             <div v-if="attachments.length">
                 <div
@@ -341,7 +354,9 @@ onBeforeUnmount(() => destroyMap());
                         <a
                             :href="hrefFor(item)"
                             :download="item.kind === 'file' ? '' : undefined"
-                            :target="item.kind === 'link' ? '_blank' : undefined"
+                            :target="
+                                item.kind === 'link' ? '_blank' : undefined
+                            "
                             rel="noopener noreferrer"
                             :aria-label="
                                 item.kind === 'file' ? t.download : t.linkNode
