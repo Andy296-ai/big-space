@@ -20,7 +20,16 @@ const logoFile = defineModel<File | null>('logoFile', { required: true });
 
 const t = useT();
 
-const shapeOptions: { id: NodeShape; icon: typeof Circle; labelKey: 'shapeCircle' | 'shapeSquare' | 'shapeTriangle' | 'shapeDiamond' | 'shapeHexagon' }[] = [
+const shapeOptions: {
+    id: NodeShape;
+    icon: typeof Circle;
+    labelKey:
+        | 'shapeCircle'
+        | 'shapeSquare'
+        | 'shapeTriangle'
+        | 'shapeDiamond'
+        | 'shapeHexagon';
+}[] = [
     { id: 'circle', icon: Circle, labelKey: 'shapeCircle' },
     { id: 'square', icon: Square, labelKey: 'shapeSquare' },
     { id: 'triangle', icon: Triangle, labelKey: 'shapeTriangle' },

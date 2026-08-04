@@ -67,7 +67,9 @@ const PRESET_COLORS = [
 function nodeColor(node: NodeData): string {
     return node.color?.trim()
         ? node.color
-        : PRESET_COLORS[Math.abs(node.tree_root_id ?? node.id) % PRESET_COLORS.length];
+        : PRESET_COLORS[
+              Math.abs(node.tree_root_id ?? node.id) % PRESET_COLORS.length
+          ];
 }
 
 /** Классический рекурсивный обход в стиле unix `tree`, склеенный в плоский список строк. */
@@ -88,7 +90,12 @@ const rows = computed<TreeRow[]>(() => {
     const visited = new Set<number>();
     const result: TreeRow[] = [];
 
-    function walk(id: number, prefix: string, isLast: boolean, isRoot: boolean) {
+    function walk(
+        id: number,
+        prefix: string,
+        isLast: boolean,
+        isRoot: boolean,
+    ) {
         if (visited.has(id)) {
             return;
         }
@@ -206,7 +213,9 @@ onMounted(load);
                             }}</span>
                             <span
                                 class="h-2 w-2 shrink-0 rounded-full"
-                                :style="{ backgroundColor: nodeColor(row.node) }"
+                                :style="{
+                                    backgroundColor: nodeColor(row.node),
+                                }"
                             />
                             <span class="truncate text-slate-200">{{
                                 row.node.title || t.untitledNode
@@ -232,7 +241,9 @@ onMounted(load);
             <p class="mb-2 text-slate-400">
                 {{ hoveredNode.description || t.noDescription }}
             </p>
-            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-500">
+            <div
+                class="flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-500"
+            >
                 <span>{{ t.depthLabel }}: {{ hoveredNode.depth }}</span>
                 <span
                     >{{ t.coordinatesLabel }}:
@@ -240,10 +251,7 @@ onMounted(load);
                     {{ Math.round(hoveredNode.pos_y) }}</span
                 >
             </div>
-            <div
-                v-if="hoveredNode.tags"
-                class="mt-1.5 flex flex-wrap gap-1"
-            >
+            <div v-if="hoveredNode.tags" class="mt-1.5 flex flex-wrap gap-1">
                 <span
                     v-for="tag in hoveredNode.tags.split(',').filter(Boolean)"
                     :key="tag"

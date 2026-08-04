@@ -97,7 +97,11 @@ function handleSubmit() {
     }
 
     if (isUserForm.value) {
-        if (!username.value.trim() || !email.value.trim() || !password.value.trim()) {
+        if (
+            !username.value.trim() ||
+            !email.value.trim() ||
+            !password.value.trim()
+        ) {
             return;
         }
 
@@ -200,8 +204,7 @@ function handleSubmit() {
 
                 <template v-if="isUserForm">
                     <div>
-                        <label
-                            class="mb-1 block font-semibold text-slate-300"
+                        <label class="mb-1 block font-semibold text-slate-300"
                             >{{ t.usernameLabel }} *</label
                         >
                         <input
@@ -213,8 +216,7 @@ function handleSubmit() {
                         />
                     </div>
                     <div>
-                        <label
-                            class="mb-1 block font-semibold text-slate-300"
+                        <label class="mb-1 block font-semibold text-slate-300"
                             >{{ t.userEmailLabel }} *</label
                         >
                         <input
@@ -226,8 +228,7 @@ function handleSubmit() {
                         />
                     </div>
                     <div>
-                        <label
-                            class="mb-1 block font-semibold text-slate-300"
+                        <label class="mb-1 block font-semibold text-slate-300"
                             >{{ t.passwordLabel }} *</label
                         >
                         <input
@@ -311,9 +312,15 @@ function handleSubmit() {
                     />
                 </template>
 
-                <ShapeFields v-model:shape="shape" v-model:logo-file="logoFile" />
+                <ShapeFields
+                    v-model:shape="shape"
+                    v-model:logo-file="logoFile"
+                />
 
-                <AttachmentEditor v-if="!isUserForm" v-model:pending="pending" />
+                <AttachmentEditor
+                    v-if="!isUserForm"
+                    v-model:pending="pending"
+                />
             </div>
 
             <div

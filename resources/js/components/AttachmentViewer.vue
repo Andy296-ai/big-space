@@ -1,12 +1,6 @@
 <script setup lang="ts">
 import DOMPurify from 'dompurify';
-import {
-    AlertTriangle,
-    Loader2,
-    Pencil,
-    Save,
-    X,
-} from 'lucide-vue-next';
+import { AlertTriangle, Loader2, Pencil, Save, X } from 'lucide-vue-next';
 import { marked } from 'marked';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { apiFetch } from '../lib/api';
@@ -268,8 +262,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
                         <pre
                             v-else
                             class="font-mono text-xs whitespace-pre-wrap text-slate-200"
-                            >{{ rawContent }}</pre
-                        >
+                            >{{ rawContent }}</pre>
                     </div>
                 </div>
             </div>

@@ -27,7 +27,8 @@ export interface NodeData {
     updated_at: string;
 }
 
-export type NodeShape = 'circle' | 'square' | 'triangle' | 'diamond' | 'hexagon';
+export type NodeShape =
+    'circle' | 'square' | 'triangle' | 'diamond' | 'hexagon';
 
 /** Файл или ссылка, прикреплённые к узлу. */
 export interface AttachmentData {
