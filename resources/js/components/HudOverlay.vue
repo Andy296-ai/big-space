@@ -46,6 +46,7 @@ const emit = defineEmits<{
 
 const t = computed(() => translations[props.settings.lang]);
 
+const searchInputRef = ref<HTMLInputElement | null>(null);
 const searchQuery = ref('');
 const isFilterOpen = ref(false);
 const maxDepth = ref<number | null>(null);
@@ -95,6 +96,14 @@ function applyFilters() {
         createdTo: createdTo.value,
     });
 }
+
+/** Даёт родителю сфокусировать поиск по горячей клавише. */
+function focusSearch() {
+    searchInputRef.value?.focus();
+    searchInputRef.value?.select();
+}
+
+defineExpose({ focusSearch });
 </script>
 
 <template>
@@ -156,6 +165,7 @@ function applyFilters() {
             >
                 <Search class="h-4 w-4 text-slate-400" />
                 <input
+                    ref="searchInputRef"
                     v-model="searchQuery"
                     type="text"
                     :placeholder="t.searchPlaceholder"

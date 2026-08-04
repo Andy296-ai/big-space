@@ -4,16 +4,22 @@ namespace App\Http\Controllers;
 
 use App\Models\Edge;
 use App\Models\Node;
+use App\Models\NodeAttachment;
 use App\Models\Space;
 use App\Services\GraphRepository;
 use App\Services\LayoutEngine;
+use App\Services\SpaceProvisioner;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class GraphController extends Controller
 {
@@ -27,43 +33,30 @@ class GraphController extends Controller
         return "undo:{$space->id}:{$token}";
     }
 
-    public function index(Request $request): Response
+    public function index(Request $request, SpaceProvisioner $provisioner): Response
     {
-        // Ensure at least one space exists
+        $user = $request->user();
         $currentSpace = null;
+
+        // Явно запрошенный slug честно проверяем правами — так root может
+        // открыть чужое пространство по ссылке из Admin-графа, а остальные нет.
         if ($request->has('space')) {
-            $currentSpace = Space::where('slug', $request->query('space'))->first();
-        }
-        if (! $currentSpace) {
-            $currentSpace = Space::first();
-        }
+            $bySlug = Space::where('slug', $request->query('space'))->first();
 
-        if (! $currentSpace) {
-            $currentSpace = Space::create([
-                'name' => 'Default Space',
-                'slug' => 'default-space',
-                'description' => 'Your default graph space.',
-            ]);
-
-            $root = Node::create([
-                'space_id' => $currentSpace->id,
-                'title' => 'Origin',
-                'description' => 'The first node in your space.',
-                'pos_x' => 0,
-                'pos_y' => 0,
-                'pos_z' => 0,
-                'depth' => 0,
-                'color' => '#3b82f6',
-                'tags' => 'origin,root',
-            ]);
-            $root->update(['tree_root_id' => $root->id]);
+            if ($bySlug && Gate::forUser($user)->allows('access', $bySlug)) {
+                $currentSpace = $bySlug;
+            }
         }
 
-        $allSpaces = Space::withCount(['nodes', 'edges'])->get();
+        // Admin — служебное пространство, обычной "рабочей" точкой входа быть не должно.
+        $currentSpace ??= Space::where('user_id', $user->id)->where('is_admin', false)->first();
+        $currentSpace ??= $provisioner->createForUser($user, 'Default Space', 'Your default graph space.');
+
+        $mySpaces = Space::withCount(['nodes', 'edges'])->where('user_id', $user->id)->get();
 
         return Inertia::render('Welcome', [
             'currentSpace' => $currentSpace,
-            'spaces' => $allSpaces,
+            'spaces' => $mySpaces,
         ]);
     }
 
@@ -91,6 +84,7 @@ class GraphController extends Controller
             'pos_x' => 'nullable|numeric',
             'pos_y' => 'nullable|numeric',
             'pos_z' => 'nullable|numeric',
+            'shape' => ['nullable', Rule::in(Node::SHAPES)],
         ]);
 
         $node = Node::create([
@@ -99,6 +93,7 @@ class GraphController extends Controller
             'description' => $validated['description'] ?? '',
             'color' => $validated['color'] ?? '',
             'tags' => $validated['tags'] ?? '',
+            'shape' => $validated['shape'] ?? 'circle',
             'map_lat' => $validated['map_lat'] ?? null,
             'map_lon' => $validated['map_lon'] ?? null,
             'map_title' => $validated['map_title'] ?? null,
@@ -122,6 +117,7 @@ class GraphController extends Controller
             'map_lat' => 'nullable|numeric|between:-90,90',
             'map_lon' => 'nullable|numeric|between:-180,180',
             'map_title' => 'nullable|string|max:255',
+            'shape' => ['nullable', Rule::in(Node::SHAPES)],
         ]);
 
         $childCount = $parent->childEdges()->count();
@@ -133,6 +129,7 @@ class GraphController extends Controller
             'description' => $validated['description'] ?? '',
             'color' => $validated['color'] ?? '',
             'tags' => $validated['tags'] ?? '',
+            'shape' => $validated['shape'] ?? 'circle',
             'map_lat' => $validated['map_lat'] ?? null,
             'map_lon' => $validated['map_lon'] ?? null,
             'map_title' => $validated['map_title'] ?? null,
@@ -153,6 +150,30 @@ class GraphController extends Controller
             'node' => $child,
             'edge' => Edge::where('parent_id', $parent->id)->where('child_id', $child->id)->first(),
         ], 201);
+    }
+
+    /** Клонирует узел вместе со всем поддеревом и вложениями под указанным родителем (или новым корнем, если parent_id не задан). */
+    public function copy(Request $request, Space $space, Node $node): JsonResponse
+    {
+        $validated = $request->validate([
+            'parent_id' => 'nullable|integer',
+        ]);
+
+        $newParent = null;
+
+        if (! empty($validated['parent_id'])) {
+            $newParent = Node::where('space_id', $space->id)
+                ->where('id', $validated['parent_id'])
+                ->first();
+
+            if (! $newParent) {
+                return response()->json(['error' => 'Parent node not found in this space.'], 422);
+            }
+        }
+
+        $copy = $this->graphRepo->copySubtree($space, $node, $newParent);
+
+        return response()->json($copy->load('attachments'), 201);
     }
 
     public function move(Request $request, Space $space, Node $node): JsonResponse
@@ -203,6 +224,7 @@ class GraphController extends Controller
             'map_title' => 'nullable|string|max:255',
             'pos_x' => 'nullable|numeric',
             'pos_y' => 'nullable|numeric',
+            'shape' => ['nullable', Rule::in(Node::SHAPES)],
         ]);
 
         $node->update([
@@ -210,6 +232,7 @@ class GraphController extends Controller
             'description' => $validated['description'] ?? '',
             'color' => $validated['color'] ?? '',
             'tags' => $validated['tags'] ?? '',
+            'shape' => $validated['shape'] ?? $node->shape,
             'map_lat' => $validated['map_lat'] ?? null,
             'map_lon' => $validated['map_lon'] ?? null,
             'map_title' => $validated['map_title'] ?? null,
@@ -220,6 +243,38 @@ class GraphController extends Controller
         ]);
 
         return response()->json($node->load('attachments'));
+    }
+
+    /** Отдаёт логотип узла — как и вложения, лежит в приватном хранилище. */
+    public function logo(Space $space, Node $node): StreamedResponse
+    {
+        abort_unless($node->space_id === $space->id, 404);
+        abort_if($node->logo_path === null, 404);
+
+        $disk = Storage::disk(NodeAttachment::DISK);
+        abort_unless($disk->exists($node->logo_path), 404);
+
+        return $disk->response($node->logo_path);
+    }
+
+    public function uploadLogo(Request $request, Space $space, Node $node): JsonResponse
+    {
+        abort_unless($node->space_id === $space->id, 404);
+
+        $request->validate([
+            'logo' => 'required|image|max:5120',
+        ]);
+
+        $disk = Storage::disk(NodeAttachment::DISK);
+
+        if ($node->logo_path !== null) {
+            $disk->delete($node->logo_path);
+        }
+
+        $path = $request->file('logo')->store("logos/{$node->id}", NodeAttachment::DISK);
+        $node->update(['logo_path' => $path]);
+
+        return response()->json($node);
     }
 
     public function link(Request $request, Space $space): JsonResponse

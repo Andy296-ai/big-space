@@ -2,10 +2,12 @@
 
 use App\Models\Edge;
 use App\Models\Node;
+use App\Models\NodeAttachment;
 use App\Models\Space;
 use App\Models\User;
 use App\Services\GraphRepository;
 use App\Services\LayoutEngine;
+use Illuminate\Support\Facades\Storage;
 
 // Всё приложение за авторизацией — графовые тесты работают от учётки root,
 // которую создаёт миграция.
@@ -350,4 +352,127 @@ test('switching to leveled repairs depths but refuses real level gaps', function
     expect($diamond->fresh()->structure)->toBe(Space::STRUCTURE_DAG);
 
     expect($repo->levelGaps($diamond->id, $repo->computeLevelDepths($diamond->id)))->toBe(1);
+});
+
+test('copies a node with its subtree and attachments under a given parent', function () {
+    Storage::fake(NodeAttachment::DISK);
+
+    $space = Space::create(['name' => 'Copy', 'slug' => 'copy-space']);
+
+    $target = Node::create(['space_id' => $space->id, 'title' => 'Target parent', 'depth' => 0]);
+
+    $source = Node::create([
+        'space_id' => $space->id,
+        'title' => 'Source root',
+        'description' => 'desc',
+        'color' => '#ff0000',
+        'tags' => 'a,b',
+        'map_lat' => 1.5,
+        'map_lon' => 2.5,
+        'map_title' => 'Point',
+        'pos_x' => 10,
+        'pos_y' => 20,
+        'pos_z' => 0,
+        'depth' => 0,
+    ]);
+    $source->update(['tree_root_id' => $source->id]);
+
+    $child = Node::create([
+        'space_id' => $space->id,
+        'title' => 'Child',
+        'pos_x' => 30,
+        'pos_y' => 40,
+        'pos_z' => 0,
+        'depth' => 1,
+        'tree_root_id' => $source->id,
+    ]);
+    Edge::create(['space_id' => $space->id, 'parent_id' => $source->id, 'child_id' => $child->id]);
+
+    $file = $source->attachments()->create([
+        'kind' => 'file',
+        'label' => 'note.md',
+        'path' => 'attachments/'.$source->id.'/note.md',
+        'size' => 5,
+        'format' => 'md',
+        'position' => 1,
+    ]);
+    Storage::disk(NodeAttachment::DISK)->put($file->path, 'hello');
+
+    $child->attachments()->create([
+        'kind' => 'link',
+        'label' => 'Example',
+        'url' => 'https://example.com',
+        'position' => 1,
+    ]);
+
+    $response = $this->postJson("/api/spaces/{$space->id}/nodes/{$source->id}/copy", [
+        'parent_id' => $target->id,
+    ]);
+
+    $response->assertStatus(201);
+    $copyRootId = $response->json('id');
+
+    expect($copyRootId)->not->toBe($source->id);
+    expect($response->json('title'))->toBe('Source root');
+    expect($response->json('description'))->toBe('desc');
+    expect($response->json('tags'))->toBe('a,b');
+    expect($response->json('map_lat'))->toBe(1.5);
+    expect($response->json('depth'))->toBe(1);
+
+    $this->assertDatabaseHas('edges', ['parent_id' => $target->id, 'child_id' => $copyRootId]);
+
+    $copiedChild = Node::where('space_id', $space->id)
+        ->where('title', 'Child')
+        ->where('id', '!=', $child->id)
+        ->firstOrFail();
+
+    expect($copiedChild->depth)->toBe(2);
+    $this->assertDatabaseHas('edges', ['parent_id' => $copyRootId, 'child_id' => $copiedChild->id]);
+
+    // Позиции сдвинуты на ту же дельту относительно оригиналов, поддерево не расползается.
+    $copyRoot = Node::findOrFail($copyRootId);
+    $deltaX = $copyRoot->pos_x - $source->pos_x;
+    $deltaY = $copyRoot->pos_y - $source->pos_y;
+    expect($copiedChild->pos_x)->toBe($child->pos_x + $deltaX);
+    expect($copiedChild->pos_y)->toBe($child->pos_y + $deltaY);
+
+    // Вложения продублированы: файл физически скопирован, оригинал не тронут.
+    $copiedFileAttachment = NodeAttachment::where('node_id', $copyRootId)->where('kind', 'file')->firstOrFail();
+    expect($copiedFileAttachment->path)->not->toBe($file->path);
+    Storage::disk(NodeAttachment::DISK)->assertExists($copiedFileAttachment->path);
+    expect(Storage::disk(NodeAttachment::DISK)->get($copiedFileAttachment->path))->toBe('hello');
+    Storage::disk(NodeAttachment::DISK)->assertExists($file->path);
+
+    $copiedLinkAttachment = NodeAttachment::where('node_id', $copiedChild->id)->where('kind', 'link')->firstOrFail();
+    expect($copiedLinkAttachment->url)->toBe('https://example.com');
+
+    // У target нет собственного tree_root_id — копия наследует id самого target.
+    expect($copyRoot->tree_root_id)->toBe($target->id);
+    expect($copiedChild->tree_root_id)->toBe($target->id);
+});
+
+test('copying without a parent creates an independent new root', function () {
+    $space = Space::create(['name' => 'Copy Root', 'slug' => 'copy-root']);
+    $source = Node::create(['space_id' => $space->id, 'title' => 'Root', 'pos_x' => 0, 'pos_y' => 0, 'depth' => 0]);
+    $source->update(['tree_root_id' => $source->id]);
+
+    $response = $this->postJson("/api/spaces/{$space->id}/nodes/{$source->id}/copy", []);
+
+    $response->assertStatus(201);
+    expect($response->json('depth'))->toBe(0);
+    expect($response->json('id'))->toBe($response->json('tree_root_id'));
+    expect($response->json('id'))->not->toBe($source->id);
+});
+
+test('copy rejects a parent from a different space', function () {
+    $space = Space::create(['name' => 'A', 'slug' => 'copy-a']);
+    $foreign = Space::create(['name' => 'B', 'slug' => 'copy-b']);
+    $source = Node::create(['space_id' => $space->id, 'title' => 'Root', 'depth' => 0]);
+    $foreignNode = Node::create(['space_id' => $foreign->id, 'title' => 'Foreign', 'depth' => 0]);
+
+    $response = $this->postJson("/api/spaces/{$space->id}/nodes/{$source->id}/copy", [
+        'parent_id' => $foreignNode->id,
+    ]);
+
+    $response->assertStatus(422);
 });

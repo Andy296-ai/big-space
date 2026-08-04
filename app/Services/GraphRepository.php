@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Models\Edge;
 use App\Models\Node;
+use App\Models\NodeAttachment;
 use App\Models\Space;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class GraphRepository
 {
@@ -462,5 +464,154 @@ class GraphRepository
         Node::where('space_id', $spaceId)->whereNull('tree_root_id')->update([
             'tree_root_id' => DB::raw('id'),
         ]);
+    }
+
+    /**
+     * Клонирует узел вместе со всем его поддеревом (и вложениями) как новые
+     * записи, опционально подвешивая копию под другого родителя. Родитель
+     * может быть любым узлом пространства — не обязательно корнем и не
+     * обязательно вне копируемого поддерева, цикл здесь в принципе невозможен:
+     * копия всегда состоит из свежих id.
+     */
+    public function copySubtree(Space $space, Node $sourceRoot, ?Node $newParent): Node
+    {
+        $edges = Edge::where('space_id', $space->id)->get(['parent_id', 'child_id']);
+
+        $childrenOf = [];
+        foreach ($edges as $e) {
+            $childrenOf[$e->parent_id][] = $e->child_id;
+        }
+
+        // Обход в ширину от копируемого узла: относительная глубина — это
+        // «сколько рёбер от корня копии», по ней глубины пересчитываются
+        // заново под новым родителем, где бы тот ни находился.
+        $relativeDepth = [$sourceRoot->id => 0];
+        $order = [$sourceRoot->id];
+        $queue = [$sourceRoot->id];
+
+        while (! empty($queue)) {
+            $current = array_shift($queue);
+
+            foreach ($childrenOf[$current] ?? [] as $childId) {
+                if (! isset($relativeDepth[$childId])) {
+                    $relativeDepth[$childId] = $relativeDepth[$current] + 1;
+                    $order[] = $childId;
+                    $queue[] = $childId;
+                }
+            }
+        }
+
+        $subtreeIds = array_flip($order);
+        $internalEdges = $edges->filter(
+            fn ($e) => isset($subtreeIds[$e->parent_id]) && isset($subtreeIds[$e->child_id])
+        );
+
+        $originals = Node::whereIn('id', $order)->get()->keyBy('id');
+        $sourceRootModel = $originals[$sourceRoot->id];
+
+        $newRootPos = $newParent
+            ? LayoutEngine::placeChild($newParent, $newParent->childEdges()->count())
+            : [
+                'x' => $sourceRootModel->pos_x + 120,
+                'y' => $sourceRootModel->pos_y + 120,
+            ];
+
+        $deltaX = $newRootPos['x'] - $sourceRootModel->pos_x;
+        $deltaY = $newRootPos['y'] - $sourceRootModel->pos_y;
+
+        return DB::transaction(function () use (
+            $space,
+            $newParent,
+            $order,
+            $originals,
+            $relativeDepth,
+            $internalEdges,
+            $deltaX,
+            $deltaY,
+        ) {
+            $idMap = [];
+            $newRootId = null;
+
+            foreach ($order as $originalId) {
+                $original = $originals[$originalId];
+                $depth = $newParent
+                    ? $newParent->depth + 1 + $relativeDepth[$originalId]
+                    : $relativeDepth[$originalId];
+
+                $clone = Node::create([
+                    'space_id' => $space->id,
+                    'title' => $original->title,
+                    'description' => $original->description,
+                    'color' => $original->color,
+                    'tags' => $original->tags,
+                    'map_lat' => $original->map_lat,
+                    'map_lon' => $original->map_lon,
+                    'map_title' => $original->map_title,
+                    'pos_x' => $original->pos_x + $deltaX,
+                    'pos_y' => $original->pos_y + $deltaY,
+                    'pos_z' => $original->pos_z,
+                    'depth' => $depth,
+                ]);
+
+                $idMap[$originalId] = $clone->id;
+                $newRootId ??= $clone->id;
+            }
+
+            $rootTreeId = $newParent ? ($newParent->tree_root_id ?? $newParent->id) : $newRootId;
+            Node::whereIn('id', array_values($idMap))->update(['tree_root_id' => $rootTreeId]);
+
+            foreach ($internalEdges as $edge) {
+                Edge::create([
+                    'space_id' => $space->id,
+                    'parent_id' => $idMap[$edge->parent_id],
+                    'child_id' => $idMap[$edge->child_id],
+                ]);
+            }
+
+            if ($newParent) {
+                Edge::create([
+                    'space_id' => $space->id,
+                    'parent_id' => $newParent->id,
+                    'child_id' => $newRootId,
+                ]);
+            }
+
+            $this->cloneAttachments($idMap);
+
+            return Node::findOrFail($newRootId);
+        });
+    }
+
+    /**
+     * @param  array<int, int>  $idMap  Original node id => cloned node id.
+     */
+    private function cloneAttachments(array $idMap): void
+    {
+        $disk = Storage::disk(NodeAttachment::DISK);
+
+        $attachments = NodeAttachment::whereIn('node_id', array_keys($idMap))
+            ->orderBy('position')
+            ->get();
+
+        foreach ($attachments as $attachment) {
+            $newNodeId = $idMap[$attachment->node_id];
+            $newPath = null;
+
+            if ($attachment->stored && $disk->exists($attachment->path)) {
+                $newPath = 'attachments/'.$newNodeId.'/'.basename($attachment->path);
+                $disk->copy($attachment->path, $newPath);
+            }
+
+            NodeAttachment::create([
+                'node_id' => $newNodeId,
+                'kind' => $attachment->kind,
+                'label' => $attachment->label,
+                'url' => $attachment->url,
+                'path' => $newPath,
+                'size' => $attachment->size,
+                'format' => $attachment->format,
+                'position' => $attachment->position,
+            ]);
+        }
     }
 }

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3';
-import { ref, onMounted, computed, watch } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 
 import AddNodeModal from '../components/AddNodeModal.vue';
 import type { PendingAttachment } from '../components/AttachmentEditor.vue';
+import CopyNodeModal from '../components/CopyNodeModal.vue';
 import DeleteConfirmModal from '../components/DeleteConfirmModal.vue';
 import EditNodeModal from '../components/EditNodeModal.vue';
 import HudOverlay from '../components/HudOverlay.vue';
@@ -17,6 +18,7 @@ import type {
     CameraState,
     EdgeData,
     NodeData,
+    NodeShape,
 } from '../components/SpaceScene.vue';
 import SpaceScene from '../components/SpaceScene.vue';
 import { apiFetch } from '../lib/api';
@@ -36,6 +38,7 @@ const props = defineProps<{
 }>();
 
 const sceneRef = ref<InstanceType<typeof SpaceScene> | null>(null);
+const hudRef = ref<InstanceType<typeof HudOverlay> | null>(null);
 
 const nodes = ref<NodeData[]>([]);
 const edges = ref<EdgeData[]>([]);
@@ -49,6 +52,7 @@ const showSettingsModal = ref(false);
 const showAddModal = ref(false);
 const showEditModal = ref(false);
 const showLinkModal = ref(false);
+const showCopyModal = ref(false);
 const showDeleteModal = ref(false);
 const addModalParentNode = ref<NodeData | null>(null);
 
@@ -322,6 +326,17 @@ async function uploadPending(nodeId: number, pending: PendingAttachment[]) {
     }
 }
 
+/** Загружает логотип уже существующему узлу. */
+async function uploadLogo(nodeId: number, file: File) {
+    const form = new FormData();
+    form.append('logo', file);
+
+    await apiFetch(`/api/spaces/${props.currentSpace.id}/nodes/${nodeId}/logo`, {
+        method: 'POST',
+        body: form,
+    });
+}
+
 async function handleRemoveAttachment(attachmentId: number) {
     const nodeId = selectedNode.value?.id;
 
@@ -407,6 +422,121 @@ function openAddChildModal() {
     showAddModal.value = true;
 }
 
+const isAnyModalOpen = computed(
+    () =>
+        showSpaceModal.value ||
+        showSettingsModal.value ||
+        showAddModal.value ||
+        showEditModal.value ||
+        showLinkModal.value ||
+        showCopyModal.value ||
+        showDeleteModal.value,
+);
+
+/** Пока фокус в поле ввода, буквенные хоткеи должны просто печататься как текст. */
+function isTypingTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) {
+        return false;
+    }
+
+    return (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable
+    );
+}
+
+/**
+ * Глобальные хоткеи — их же список показан пользователю в настройках
+ * (см. SettingsPanel), так что при добавлении нового держим оба места в синхроне.
+ */
+function handleGlobalKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+        if (isAnyModalOpen.value) {
+            showSpaceModal.value = false;
+            showSettingsModal.value = false;
+            showAddModal.value = false;
+            showEditModal.value = false;
+            showLinkModal.value = false;
+            showCopyModal.value = false;
+            showDeleteModal.value = false;
+        } else if (selectedNode.value) {
+            selectedNode.value = null;
+        }
+
+        return;
+    }
+
+    if (isTypingTarget(event.target)) {
+        return;
+    }
+
+    // Отмена удаления — до общей проверки isAnyModalOpen, чтобы работать
+    // даже если тост с отменой висит поверх чего-то ещё.
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+        if (undoToken.value) {
+            event.preventDefault();
+            handleUndo();
+        }
+
+        return;
+    }
+
+    if (isAnyModalOpen.value) {
+        return;
+    }
+
+    switch (event.key) {
+        case '/':
+            event.preventDefault();
+            hudRef.value?.focusSearch();
+            break;
+        case 'n':
+        case 'N':
+            if (selectedNode.value) {
+                openAddChildModal();
+            } else {
+                openAddRootModal();
+            }
+
+            break;
+        case 'e':
+        case 'E':
+            if (selectedNode.value) {
+                showEditModal.value = true;
+            }
+
+            break;
+        case 'l':
+        case 'L':
+            if (selectedNode.value) {
+                showLinkModal.value = true;
+            }
+
+            break;
+        case 'Delete':
+        case 'Backspace':
+            if (selectedNode.value) {
+                showDeleteModal.value = true;
+            }
+
+            break;
+        case 'a':
+        case 'A':
+            handleAutoLayout();
+            break;
+    }
+}
+
+onMounted(() => {
+    window.addEventListener('keydown', handleGlobalKeydown);
+});
+
+onUnmounted(() => {
+    window.removeEventListener('keydown', handleGlobalKeydown);
+});
+
 async function handleAddNode(payload: {
     title: string;
     description: string;
@@ -417,11 +547,13 @@ async function handleAddNode(payload: {
     map_title: string | null;
     pos_x: number | null;
     pos_y: number | null;
+    shape: NodeShape;
+    logoFile: File | null;
     pending: PendingAttachment[];
 }) {
     showAddModal.value = false;
 
-    const { pending, ...fields } = payload;
+    const { pending, logoFile, ...fields } = payload;
     const parent = addModalParentNode.value;
 
     try {
@@ -440,9 +572,13 @@ async function handleAddNode(payload: {
             return;
         }
 
-        // Вложения можно отправить только после того, как узел получил id.
+        // Вложения и логотип можно отправить только после того, как узел получил id.
         if (pending.length) {
             await uploadPending(created.id, pending);
+        }
+
+        if (logoFile) {
+            await uploadLogo(created.id, logoFile);
         }
 
         await loadGraph();
@@ -450,6 +586,49 @@ async function handleAddNode(payload: {
             nodes.value.find((n) => n.id === created.id) ?? created;
     } catch (err) {
         console.error('Failed to add node:', err);
+    }
+}
+
+/** Только в Admin-пространстве: «Добавить корень» создаёт учётку, а не обычный узел. */
+async function handleAddUser(payload: {
+    title: string;
+    username: string;
+    email: string;
+    password: string;
+    color: string;
+    shape: NodeShape;
+    tags: string;
+    logoFile: File | null;
+}) {
+    showAddModal.value = false;
+
+    const { logoFile, title, ...fields } = payload;
+
+    try {
+        const res = await apiFetch('/api/admin/users', {
+            method: 'POST',
+            // Бэкенд ждёт "name" — отображаемое имя узла-пользователя,
+            // отдельно от "username" (логина).
+            body: JSON.stringify({ ...fields, name: title }),
+        });
+
+        if (!res.ok) {
+            alert(describeServerError(await res.json()));
+
+            return;
+        }
+
+        const data = await res.json();
+
+        if (logoFile) {
+            await uploadLogo(data.node.id, logoFile);
+        }
+
+        await loadGraph();
+        selectedNode.value =
+            nodes.value.find((n) => n.id === data.node.id) ?? data.node;
+    } catch (err) {
+        console.error('Failed to create user:', err);
     }
 }
 
@@ -464,11 +643,13 @@ async function handleEditNode(payload: {
     map_title: string | null;
     pos_x: number | null;
     pos_y: number | null;
+    shape: NodeShape;
+    logoFile: File | null;
     pending: PendingAttachment[];
 }) {
     showEditModal.value = false;
 
-    const { pending, ...fields } = payload;
+    const { pending, logoFile, ...fields } = payload;
 
     try {
         await apiFetch(
@@ -478,6 +659,10 @@ async function handleEditNode(payload: {
 
         if (pending.length) {
             await uploadPending(payload.id, pending);
+        }
+
+        if (logoFile) {
+            await uploadLogo(payload.id, logoFile);
         }
 
         await loadGraph();
@@ -514,6 +699,33 @@ async function handleLinkNodes(payload: {
         await loadGraph();
     } catch (err) {
         console.error('Failed to link nodes:', err);
+    }
+}
+
+async function handleCopyNode(payload: { parent_id: number | null }) {
+    showCopyModal.value = false;
+
+    if (!selectedNode.value) {
+        return;
+    }
+
+    try {
+        const res = await apiFetch(
+            `/api/spaces/${props.currentSpace.id}/nodes/${selectedNode.value.id}/copy`,
+            { method: 'POST', body: JSON.stringify(payload) },
+        );
+
+        if (!res.ok) {
+            alert(describeServerError(await res.json()));
+
+            return;
+        }
+
+        const copy = await res.json();
+        await loadGraph();
+        selectedNode.value = nodes.value.find((n) => n.id === copy.id) ?? null;
+    } catch (err) {
+        console.error('Failed to copy node:', err);
     }
 }
 
@@ -698,6 +910,7 @@ async function handleDeleteSpace(spaceId: number) {
     >
         <!-- Top HUD Overlay -->
         <HudOverlay
+            ref="hudRef"
             :space-name="currentSpace.name"
             :nodes="nodes"
             :edges-count="edges.length"
@@ -752,6 +965,7 @@ async function handleDeleteSpace(spaceId: number) {
             @open-add-child="openAddChildModal"
             @open-edit="showEditModal = true"
             @open-link="showLinkModal = true"
+            @open-copy="showCopyModal = true"
             @delete="showDeleteModal = true"
         />
 
@@ -770,8 +984,10 @@ async function handleDeleteSpace(spaceId: number) {
         <AddNodeModal
             v-if="showAddModal"
             :parent-node="addModalParentNode"
+            :is-admin-space="currentSpace.is_admin"
             @close="showAddModal = false"
             @submit="handleAddNode"
+            @submit-user="handleAddUser"
         />
 
         <EditNodeModal
@@ -788,6 +1004,14 @@ async function handleDeleteSpace(spaceId: number) {
             :all-nodes="nodes"
             @close="showLinkModal = false"
             @submit="handleLinkNodes"
+        />
+
+        <CopyNodeModal
+            v-if="showCopyModal && selectedNode"
+            :source-node="selectedNode"
+            :all-nodes="nodes"
+            @close="showCopyModal = false"
+            @submit="handleCopyNode"
         />
 
         <DeleteConfirmModal

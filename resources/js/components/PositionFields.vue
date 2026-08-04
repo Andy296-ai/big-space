@@ -21,8 +21,7 @@ const t = useT();
         <div class="grid grid-cols-2 gap-2">
             <input
                 v-model="posX"
-                type="number"
-                step="any"
+                type="text"
                 inputmode="decimal"
                 :placeholder="t.posXLabel"
                 :aria-label="t.posXLabel"
@@ -30,8 +29,7 @@ const t = useT();
             />
             <input
                 v-model="posY"
-                type="number"
-                step="any"
+                type="text"
                 inputmode="decimal"
                 :placeholder="t.posYLabel"
                 :aria-label="t.posYLabel"

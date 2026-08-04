@@ -5,9 +5,11 @@ import {
     ArrowRight,
     ChevronDown,
     ChevronUp,
+    Copy,
     Download,
     Edit3,
     Eye,
+    GitBranch,
     Layers,
     Link,
     MapPin,
@@ -20,6 +22,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useT } from '../lib/i18n';
 import AttachmentViewer from './AttachmentViewer.vue';
 import type { AttachmentData, NodeData } from './SpaceScene.vue';
+import SpaceStructureViewer from './SpaceStructureViewer.vue';
 
 const props = defineProps<{
     spaceId: number;
@@ -35,6 +38,7 @@ const emit = defineEmits<{
     (e: 'open-add-child'): void;
     (e: 'open-edit'): void;
     (e: 'open-link'): void;
+    (e: 'open-copy'): void;
     (e: 'delete', nodeId: number): void;
 }>();
 
@@ -43,12 +47,14 @@ const TAGS_SHOWN = 4;
 const FILES_SHOWN = 5;
 
 const expanded = ref(false);
+const showStructureViewer = ref(false);
 
 // При переходе на другой узел список снова сворачивается.
 watch(
     () => props.node?.id,
     () => {
         expanded.value = false;
+        showStructureViewer.value = false;
     },
 );
 
@@ -293,6 +299,17 @@ onBeforeUnmount(() => destroyMap());
                 </div>
             </div>
 
+            <!-- Структура связанного пространства: только у узлов-пространств в Admin -->
+            <button
+                v-if="node.linked_space_id"
+                type="button"
+                @click="showStructureViewer = true"
+                class="flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/50 px-3 py-2 text-xs font-semibold text-slate-200 transition-colors hover:bg-slate-700"
+            >
+                <GitBranch class="h-3.5 w-3.5 text-emerald-400" />
+                <span>{{ t.viewStructureAction }}</span>
+            </button>
+
             <!-- Файлы и ссылки: только если прикреплены -->
             <div v-if="attachments.length">
                 <div
@@ -390,8 +407,16 @@ onBeforeUnmount(() => destroyMap());
             </button>
 
             <button
+                @click="emit('open-copy')"
+                class="flex items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-200 transition-all hover:bg-slate-700 active:scale-95"
+            >
+                <Copy class="h-3.5 w-3.5 text-emerald-400" />
+                <span>{{ t.copyNode }}</span>
+            </button>
+
+            <button
                 @click="emit('delete', node.id)"
-                class="flex items-center justify-center gap-1.5 rounded-xl border border-rose-800/60 bg-rose-950/40 px-3 py-2 text-xs font-semibold text-rose-300 transition-all hover:bg-rose-900/60 active:scale-95"
+                class="col-span-2 flex items-center justify-center gap-1.5 rounded-xl border border-rose-800/60 bg-rose-950/40 px-3 py-2 text-xs font-semibold text-rose-300 transition-all hover:bg-rose-900/60 active:scale-95"
             >
                 <Trash2 class="h-3.5 w-3.5" />
                 <span>{{ t.deleteAction }}</span>
@@ -405,5 +430,12 @@ onBeforeUnmount(() => destroyMap());
         :node-id="node.id"
         :attachment="previewAttachment"
         @close="previewAttachment = null"
+    />
+
+    <SpaceStructureViewer
+        v-if="showStructureViewer && node?.linked_space_id"
+        :space-id="node.linked_space_id"
+        :title="node.title || t.untitledNode"
+        @close="showStructureViewer = false"
     />
 </template>

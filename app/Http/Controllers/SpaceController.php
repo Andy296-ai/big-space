@@ -7,10 +7,10 @@ use App\Models\Node;
 use App\Models\NodeAttachment;
 use App\Models\Space;
 use App\Services\GraphRepository;
+use App\Services\SpaceProvisioner;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class SpaceController extends Controller
@@ -18,26 +18,17 @@ class SpaceController extends Controller
     /** Метка формата: по ней импорт отличает свой файл от чужого. */
     public const EXPORT_FORMAT = 'infinite-space/v1';
 
-    public function index(): JsonResponse
+    /** Свои пространства пользователя — чужие, включая Admin, здесь не видны. */
+    public function index(Request $request): JsonResponse
     {
-        return response()->json(Space::withCount(['nodes', 'edges'])->get());
+        return response()->json(
+            Space::withCount(['nodes', 'edges'])
+                ->where('user_id', $request->user()->id)
+                ->get()
+        );
     }
 
-    /** Свободный slug на основе названия. */
-    private static function uniqueSlug(string $name): string
-    {
-        $base = Str::slug($name) ?: 'space';
-        $slug = $base;
-        $suffix = 1;
-
-        while (Space::where('slug', $slug)->exists()) {
-            $slug = $base.'-'.$suffix++;
-        }
-
-        return $slug;
-    }
-
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, SpaceProvisioner $provisioner): JsonResponse
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -45,28 +36,12 @@ class SpaceController extends Controller
             'structure' => ['nullable', Rule::in(Space::STRUCTURES)],
         ]);
 
-        $slug = self::uniqueSlug($validated['name']);
-
-        $space = Space::create([
-            'name' => $validated['name'],
-            'slug' => $slug,
-            'description' => $validated['description'] ?? '',
-            'structure' => $validated['structure'] ?? Space::STRUCTURE_DAG,
-        ]);
-
-        // Seed initial origin root node for new space
-        $rootNode = Node::create([
-            'space_id' => $space->id,
-            'title' => 'Origin',
-            'description' => 'The starting node of your space.',
-            'pos_x' => 0,
-            'pos_y' => 0,
-            'pos_z' => 0,
-            'depth' => 0,
-            'color' => '#3b82f6',
-            'tags' => 'origin,root',
-        ]);
-        $rootNode->update(['tree_root_id' => $rootNode->id]);
+        $space = $provisioner->createForUser(
+            $request->user(),
+            $validated['name'],
+            $validated['description'] ?? '',
+            $validated['structure'] ?? Space::STRUCTURE_DAG,
+        );
 
         return response()->json($space->loadCount(['nodes', 'edges']), 201);
     }
@@ -170,7 +145,7 @@ class SpaceController extends Controller
      * Создаёт новое пространство из выгрузки. Ключи из файла переводятся в
      * свежие id, поэтому файл не может ничего перезаписать в базе.
      */
-    public function import(Request $request, GraphRepository $graphRepo): JsonResponse
+    public function import(Request $request, GraphRepository $graphRepo, SpaceProvisioner $provisioner): JsonResponse
     {
         $validated = $request->validate([
             'format' => ['required', Rule::in([self::EXPORT_FORMAT])],
@@ -223,8 +198,9 @@ class SpaceController extends Controller
         DB::beginTransaction();
 
         $space = Space::create([
+            'user_id' => $request->user()->id,
             'name' => $validated['space']['name'],
-            'slug' => self::uniqueSlug($validated['space']['name']),
+            'slug' => $provisioner->uniqueSlug($validated['space']['name']),
             'description' => $validated['space']['description'] ?? '',
             'structure' => $structure,
         ]);
@@ -285,6 +261,7 @@ class SpaceController extends Controller
         }
 
         $graphRepo->updateTreeRootIds($space->id);
+        $provisioner->linkIntoAdminSpace($request->user(), $space);
         DB::commit();
 
         return response()->json($space->fresh()->loadCount(['nodes', 'edges']), 201);
@@ -292,8 +269,12 @@ class SpaceController extends Controller
 
     public function destroy(Space $space): JsonResponse
     {
-        // Don't delete if it's the last space remaining
-        if (Space::count() <= 1) {
+        if ($space->is_admin) {
+            return response()->json(['error' => 'The Admin space cannot be deleted.'], 422);
+        }
+
+        // У владельца этого пространства должно остаться хотя бы одно своё.
+        if (Space::where('user_id', $space->user_id)->count() <= 1) {
             return response()->json(['error' => 'Cannot delete the only space'], 422);
         }
 

@@ -9,6 +9,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Node extends Model
 {
+    /** Формы, которые умеет рисовать SpaceScene (см. resources/js/components/SpaceScene.vue). */
+    public const SHAPES = ['circle', 'square', 'triangle', 'diamond', 'hexagon'];
+
     protected $fillable = [
         'space_id',
         'title',
@@ -19,10 +22,13 @@ class Node extends Model
         'depth',
         'color',
         'tags',
+        'shape',
         'map_lat',
         'map_lon',
         'map_title',
         'tree_root_id',
+        'linked_user_id',
+        'linked_space_id',
     ];
 
     protected $casts = [
@@ -33,7 +39,14 @@ class Node extends Model
         'tree_root_id' => 'integer',
         'map_lat' => 'float',
         'map_lon' => 'float',
+        'linked_user_id' => 'integer',
+        'linked_space_id' => 'integer',
     ];
+
+    /** Путь на диске — деталь реализации, наружу отдаём готовый URL. */
+    protected $hidden = ['logo_path'];
+
+    protected $appends = ['logo_url'];
 
     /** @return HasMany<NodeAttachment, $this> */
     public function attachments(): HasMany
@@ -47,10 +60,39 @@ class Node extends Model
         return $this->map_lat !== null && $this->map_lon !== null;
     }
 
+    public function getLogoUrlAttribute(): ?string
+    {
+        if ($this->logo_path === null) {
+            return null;
+        }
+
+        return "/api/spaces/{$this->space_id}/nodes/{$this->id}/logo";
+    }
+
     /** @return BelongsTo<Space, $this> */
     public function space(): BelongsTo
     {
         return $this->belongsTo(Space::class);
+    }
+
+    /**
+     * Этот узел представляет пользователя (только в Admin-пространстве).
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function linkedUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'linked_user_id');
+    }
+
+    /**
+     * Этот узел представляет чьё-то пространство (только в Admin-пространстве).
+     *
+     * @return BelongsTo<Space, $this>
+     */
+    public function linkedSpace(): BelongsTo
+    {
+        return $this->belongsTo(Space::class, 'linked_space_id');
     }
 
     /** @return BelongsTo<Node, $this> */

@@ -5,6 +5,7 @@ import {
     GitBranch,
     ListTree,
     Globe,
+    Keyboard,
     Layout,
     Network,
     Palette,
@@ -164,6 +165,18 @@ const interfaceToggles: { key: BooleanSettingKey; labelKey: TranslationKey }[] =
         { key: 'showStats', labelKey: 'showStatsLabel' },
         { key: 'reduceMotion', labelKey: 'reduceMotionLabel' },
     ];
+
+/** Список — просто шпаргалка; сами хоткеи навешаны в Welcome.vue, держим оба места в синхроне. */
+const shortcuts: { keys: string; labelKey: TranslationKey }[] = [
+    { keys: '/', labelKey: 'shortcutSearch' },
+    { keys: 'N', labelKey: 'shortcutAddNode' },
+    { keys: 'E', labelKey: 'shortcutEdit' },
+    { keys: 'L', labelKey: 'shortcutLink' },
+    { keys: 'Delete', labelKey: 'shortcutDelete' },
+    { keys: 'Ctrl/⌘ Z', labelKey: 'shortcutUndo' },
+    { keys: 'A', labelKey: 'shortcutAutoLayout' },
+    { keys: 'Esc', labelKey: 'shortcutClose' },
+];
 
 function patch(partial: Partial<AppSettings>) {
     localSettings.value = { ...localSettings.value, ...partial };
@@ -596,6 +609,32 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
                                     />
                                 </span>
                             </button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div
+                            class="mb-2 flex items-center gap-1.5 font-semibold text-slate-300"
+                        >
+                            <Keyboard class="h-4 w-4 text-amber-400" />
+                            <span>{{ t.shortcutsLabel }}</span>
+                        </div>
+                        <div
+                            class="divide-y divide-slate-800 overflow-hidden rounded-2xl border border-slate-700 bg-slate-800/60"
+                        >
+                            <div
+                                v-for="item in shortcuts"
+                                :key="item.labelKey"
+                                class="flex items-center justify-between gap-3 p-3"
+                            >
+                                <span class="text-slate-300">{{
+                                    t[item.labelKey]
+                                }}</span>
+                                <kbd
+                                    class="shrink-0 rounded-lg border border-slate-600 bg-slate-900 px-2 py-1 font-mono text-[10px] font-semibold text-slate-200"
+                                    >{{ item.keys }}</kbd
+                                >
+                            </div>
                         </div>
                     </div>
                 </template>

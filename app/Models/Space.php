@@ -3,7 +3,9 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Space extends Model
 {
@@ -35,10 +37,15 @@ class Space extends Model
         'slug',
         'description',
         'structure',
+        'user_id',
     ];
 
     protected $attributes = [
         'structure' => self::STRUCTURE_DAG,
+    ];
+
+    protected $casts = [
+        'is_admin' => 'boolean',
     ];
 
     /** @return HasMany<Node, $this> */
@@ -51,6 +58,22 @@ class Space extends Model
     public function edges(): HasMany
     {
         return $this->hasMany(Edge::class);
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Узел в Admin-пространстве, представляющий именно это пространство.
+     *
+     * @return HasOne<Node, $this>
+     */
+    public function linkedNode(): HasOne
+    {
+        return $this->hasOne(Node::class, 'linked_space_id');
     }
 
     /** В дереве второй родитель запрещён. */

@@ -202,6 +202,11 @@ export type TranslationKeys = {
     undoDelete: string;
     autoOrganize: string;
     addRootNode: string;
+    addUserTitle: string;
+    newUserHint: string;
+    displayNameLabel: string;
+    userEmailLabel: string;
+    createUserAction: string;
     settingsTitle: string;
     settingsDesc: string;
     tabAppearance: string;
@@ -262,6 +267,17 @@ export type TranslationKeys = {
     posXLabel: string;
     posYLabel: string;
     rootPositionHint: string;
+    structureSectionLabel: string;
+    viewStructureAction: string;
+    structureEmptyLabel: string;
+    shapeSectionLabel: string;
+    logoSectionLabel: string;
+    uploadLogoAction: string;
+    shapeCircle: string;
+    shapeSquare: string;
+    shapeTriangle: string;
+    shapeDiamond: string;
+    shapeHexagon: string;
     uploadFile: string;
     addLink: string;
     linkUrlPlaceholder: string;
@@ -282,6 +298,12 @@ export type TranslationKeys = {
     linkNode: string;
     editNode: string;
     deleteAction: string;
+    copyNode: string;
+    copyNodeTitle: string;
+    copyNodeSubtitle: string;
+    copyTargetLabel: string;
+    copyNewRootOption: string;
+    copyAction: string;
     linkNodesTitle: string;
     linkNodesSubtitle: string;
     linkDirectionLabel: string;
@@ -291,6 +313,7 @@ export type TranslationKeys = {
     chooseNodePlaceholder: string;
     createLink: string;
     spacesTitle: string;
+    adminSpaceBadge: string;
     spacesSubtitle: string;
     deleteSpaceTitle: string;
     spaceNameLabel: string;
@@ -323,6 +346,15 @@ export type TranslationKeys = {
     showStatsLabel: string;
     nodeScaleLabel: string;
     reduceMotionLabel: string;
+    shortcutsLabel: string;
+    shortcutSearch: string;
+    shortcutAddNode: string;
+    shortcutEdit: string;
+    shortcutLink: string;
+    shortcutDelete: string;
+    shortcutUndo: string;
+    shortcutAutoLayout: string;
+    shortcutClose: string;
     compactHudLabel: string;
     resetSettings: string;
     close: string;
@@ -379,6 +411,11 @@ export const translations: Record<Language, TranslationKeys> = {
         undoDelete: 'Undo Delete',
         autoOrganize: 'Auto-Organize',
         addRootNode: 'Add Root Node',
+        addUserTitle: 'Add User',
+        newUserHint: 'Creates a login for a new user of this system',
+        displayNameLabel: 'Display name',
+        userEmailLabel: 'Email',
+        createUserAction: 'Create User',
         settingsTitle: 'System Settings',
         settingsDesc: 'Language, theme, node layout and visual effects',
         tabAppearance: 'Appearance',
@@ -448,6 +485,17 @@ export const translations: Record<Language, TranslationKeys> = {
         posXLabel: 'X',
         posYLabel: 'Y',
         rootPositionHint: 'Root nodes only — children are placed automatically.',
+        structureSectionLabel: 'Structure',
+        viewStructureAction: 'View structure',
+        structureEmptyLabel: 'This space is empty.',
+        shapeSectionLabel: 'Shape',
+        logoSectionLabel: 'Logo',
+        uploadLogoAction: 'Upload logo',
+        shapeCircle: 'Circle',
+        shapeSquare: 'Square',
+        shapeTriangle: 'Triangle',
+        shapeDiamond: 'Diamond',
+        shapeHexagon: 'Hexagon',
         uploadFile: 'Upload file',
         addLink: 'Add link',
         linkUrlPlaceholder: 'https://...',
@@ -468,6 +516,12 @@ export const translations: Record<Language, TranslationKeys> = {
         linkNode: 'Link Node',
         editNode: 'Edit Node',
         deleteAction: 'Delete',
+        copyNode: 'Copy',
+        copyNodeTitle: 'Copy Node',
+        copyNodeSubtitle: 'Copy {name} together with its subtree',
+        copyTargetLabel: 'Attach the copy under',
+        copyNewRootOption: '— New independent root —',
+        copyAction: 'Copy',
         linkNodesTitle: 'Link Nodes',
         linkNodesSubtitle: 'Connect {name} to another node',
         linkDirectionLabel: 'Link Direction',
@@ -477,6 +531,7 @@ export const translations: Record<Language, TranslationKeys> = {
         chooseNodePlaceholder: 'Choose a node...',
         createLink: 'Create Link',
         spacesTitle: 'Spaces',
+        adminSpaceBadge: 'Admin',
         spacesSubtitle: 'Manage and switch between your graph spaces',
         deleteSpaceTitle: 'Delete Space',
         spaceNameLabel: 'Space Name',
@@ -510,6 +565,15 @@ export const translations: Record<Language, TranslationKeys> = {
         showStatsLabel: 'Show Statistics',
         nodeScaleLabel: 'Node Size',
         reduceMotionLabel: 'Reduce Motion',
+        shortcutsLabel: 'Keyboard shortcuts',
+        shortcutSearch: 'Focus search',
+        shortcutAddNode: 'Add child (root if nothing selected)',
+        shortcutEdit: 'Edit selected node',
+        shortcutLink: 'Link selected node',
+        shortcutDelete: 'Delete selected node',
+        shortcutUndo: 'Undo last delete',
+        shortcutAutoLayout: 'Auto-organize layout',
+        shortcutClose: 'Close dialog / deselect',
         compactHudLabel: 'Compact Toolbar',
         resetSettings: 'Reset to Defaults',
         close: 'Close',
@@ -565,6 +629,11 @@ export const translations: Record<Language, TranslationKeys> = {
         undoDelete: 'Отменить удаление',
         autoOrganize: 'Авто-расстановка',
         addRootNode: 'Добавить корень',
+        addUserTitle: 'Добавить пользователя',
+        newUserHint: 'Создаёт вход для нового пользователя системы',
+        displayNameLabel: 'Отображаемое имя',
+        userEmailLabel: 'Email',
+        createUserAction: 'Создать пользователя',
         settingsTitle: 'Настройки системы',
         settingsDesc: 'Язык, тема, расстановка узлов и визуальные эффекты',
         tabAppearance: 'Оформление',
@@ -634,6 +703,17 @@ export const translations: Record<Language, TranslationKeys> = {
         posXLabel: 'X',
         posYLabel: 'Y',
         rootPositionHint: 'Только для корневых узлов — дочерние размещаются автоматически.',
+        structureSectionLabel: 'Структура',
+        viewStructureAction: 'Смотреть структуру',
+        structureEmptyLabel: 'Это пространство пустое.',
+        shapeSectionLabel: 'Форма',
+        logoSectionLabel: 'Логотип',
+        uploadLogoAction: 'Загрузить логотип',
+        shapeCircle: 'Круг',
+        shapeSquare: 'Квадрат',
+        shapeTriangle: 'Треугольник',
+        shapeDiamond: 'Ромб',
+        shapeHexagon: 'Шестиугольник',
         uploadFile: 'Загрузить файл',
         addLink: 'Добавить ссылку',
         linkUrlPlaceholder: 'https://...',
@@ -654,6 +734,12 @@ export const translations: Record<Language, TranslationKeys> = {
         linkNode: 'Связать',
         editNode: 'Изменить',
         deleteAction: 'Удалить',
+        copyNode: 'Копировать',
+        copyNodeTitle: 'Копирование узла',
+        copyNodeSubtitle: 'Скопировать «{name}» вместе со всем поддеревом',
+        copyTargetLabel: 'Прикрепить копию к',
+        copyNewRootOption: '— Новый независимый корень —',
+        copyAction: 'Копировать',
         linkNodesTitle: 'Связывание узлов',
         linkNodesSubtitle: 'Соединить «{name}» с другим узлом',
         linkDirectionLabel: 'Направление связи',
@@ -663,6 +749,7 @@ export const translations: Record<Language, TranslationKeys> = {
         chooseNodePlaceholder: 'Выберите узел...',
         createLink: 'Создать связь',
         spacesTitle: 'Пространства',
+        adminSpaceBadge: 'Админ',
         spacesSubtitle: 'Управление пространствами и переключение между ними',
         deleteSpaceTitle: 'Удалить пространство',
         spaceNameLabel: 'Название пространства',
@@ -696,6 +783,15 @@ export const translations: Record<Language, TranslationKeys> = {
         showStatsLabel: 'Показывать статистику',
         nodeScaleLabel: 'Размер узлов',
         reduceMotionLabel: 'Меньше анимации',
+        shortcutsLabel: 'Горячие клавиши',
+        shortcutSearch: 'Фокус на поиске',
+        shortcutAddNode: 'Добавить потомка (корень, если ничего не выбрано)',
+        shortcutEdit: 'Редактировать выбранный узел',
+        shortcutLink: 'Связать выбранный узел',
+        shortcutDelete: 'Удалить выбранный узел',
+        shortcutUndo: 'Отменить последнее удаление',
+        shortcutAutoLayout: 'Авто-упорядочивание',
+        shortcutClose: 'Закрыть диалог / снять выделение',
         compactHudLabel: 'Компактная панель',
         resetSettings: 'Сбросить настройки',
         close: 'Закрыть',
@@ -752,6 +848,11 @@ export const translations: Record<Language, TranslationKeys> = {
         undoDelete: 'Бекор кардани несткунӣ',
         autoOrganize: 'Ҷойгиркунии автоматӣ',
         addRootNode: 'Иловаи реша',
+        addUserTitle: 'Иловаи корбар',
+        newUserHint: 'Воридшавӣ барои корбари нави система месозад',
+        displayNameLabel: 'Номи намоишӣ',
+        userEmailLabel: 'Email',
+        createUserAction: 'Сохтани корбар',
         settingsTitle: 'Танзимоти система',
         settingsDesc: 'Забон, мавзӯъ, ҷойгиркунии гузарҳо ва эффектҳо',
         tabAppearance: 'Намуди зоҳирӣ',
@@ -820,6 +921,17 @@ export const translations: Record<Language, TranslationKeys> = {
         posXLabel: 'X',
         posYLabel: 'Y',
         rootPositionHint: 'Танҳо барои гузарҳои реша — фарзандон худкор ҷойгир мешаванд.',
+        structureSectionLabel: 'Сохтор',
+        viewStructureAction: 'Дидани сохтор',
+        structureEmptyLabel: 'Ин фазо холӣ аст.',
+        shapeSectionLabel: 'Шакл',
+        logoSectionLabel: 'Логотип',
+        uploadLogoAction: 'Боркунии логотип',
+        shapeCircle: 'Доира',
+        shapeSquare: 'Мураббаъ',
+        shapeTriangle: 'Секунҷа',
+        shapeDiamond: 'Ромб',
+        shapeHexagon: 'Шашкунҷа',
         uploadFile: 'Боргузории файл',
         addLink: 'Иловаи пайванд',
         linkUrlPlaceholder: 'https://...',
@@ -840,6 +952,12 @@ export const translations: Record<Language, TranslationKeys> = {
         linkNode: 'Пайваст',
         editNode: 'Таҳрир',
         deleteAction: 'Нест кардан',
+        copyNode: 'Нусхабардорӣ',
+        copyNodeTitle: 'Нусхабардории гузар',
+        copyNodeSubtitle: 'Нусха бардоштани «{name}» ҳамроҳ бо тамоми зершохааш',
+        copyTargetLabel: 'Нусхаро пайваст кардан ба',
+        copyNewRootOption: '— Решаи нави мустақил —',
+        copyAction: 'Нусхабардорӣ',
         linkNodesTitle: 'Пайвасти гузарҳо',
         linkNodesSubtitle: '«{name}»-ро бо гузари дигар пайваст кунед',
         linkDirectionLabel: 'Самти пайванд',
@@ -849,6 +967,7 @@ export const translations: Record<Language, TranslationKeys> = {
         chooseNodePlaceholder: 'Гузарро интихоб кунед...',
         createLink: 'Эҷоди пайванд',
         spacesTitle: 'Фазоҳо',
+        adminSpaceBadge: 'Админ',
         spacesSubtitle: 'Идора ва иваз кардани фазоҳо',
         deleteSpaceTitle: 'Нест кардани фазо',
         spaceNameLabel: 'Номи фазо',
@@ -882,6 +1001,15 @@ export const translations: Record<Language, TranslationKeys> = {
         showStatsLabel: 'Нишон додани омор',
         nodeScaleLabel: 'Андозаи гузарҳо',
         reduceMotionLabel: 'Кам кардани аниматсия',
+        shortcutsLabel: 'Тугмаҳои зуд',
+        shortcutSearch: 'Фокус ба ҷустуҷӯ',
+        shortcutAddNode: 'Иловаи фарзанд (реша, агар чизе интихоб нашуда бошад)',
+        shortcutEdit: 'Таҳрири гузари интихобшуда',
+        shortcutLink: 'Пайванди гузари интихобшуда',
+        shortcutDelete: 'Нест кардани гузари интихобшуда',
+        shortcutUndo: 'Бекор кардани нести охирин',
+        shortcutAutoLayout: 'Тартиби худкор',
+        shortcutClose: 'Пӯшидани равзана / бекор кардани интихоб',
         compactHudLabel: 'Панели компакт',
         resetSettings: 'Барқарорсозии пешфарз',
         close: 'Пӯшидан',
@@ -937,6 +1065,11 @@ export const translations: Record<Language, TranslationKeys> = {
         undoDelete: 'لغو حذف',
         autoOrganize: 'چیدمان خودکار',
         addRootNode: 'افزودن ریشه',
+        addUserTitle: 'افزودن کاربر',
+        newUserHint: 'ورود برای کاربر جدید این سیستم می‌سازد',
+        displayNameLabel: 'نام نمایشی',
+        userEmailLabel: 'ایمیل',
+        createUserAction: 'ایجاد کاربر',
         settingsTitle: 'تنظیمات سیستم',
         settingsDesc: 'زبان، تم، چیدمان گره‌ها و جلوه‌های بصری',
         tabAppearance: 'ظاهر',
@@ -1005,6 +1138,17 @@ export const translations: Record<Language, TranslationKeys> = {
         posXLabel: 'X',
         posYLabel: 'Y',
         rootPositionHint: 'فقط برای گره‌های ریشه — فرزندان به‌طور خودکار جای‌گذاری می‌شوند.',
+        structureSectionLabel: 'ساختار',
+        viewStructureAction: 'مشاهده ساختار',
+        structureEmptyLabel: 'این فضا خالی است.',
+        shapeSectionLabel: 'شکل',
+        logoSectionLabel: 'لوگو',
+        uploadLogoAction: 'بارگذاری لوگو',
+        shapeCircle: 'دایره',
+        shapeSquare: 'مربع',
+        shapeTriangle: 'مثلث',
+        shapeDiamond: 'لوزی',
+        shapeHexagon: 'شش‌ضلعی',
         uploadFile: 'بارگذاری فایل',
         addLink: 'افزودن پیوند',
         linkUrlPlaceholder: 'https://...',
@@ -1025,6 +1169,12 @@ export const translations: Record<Language, TranslationKeys> = {
         linkNode: 'پیوند',
         editNode: 'ویرایش',
         deleteAction: 'حذف',
+        copyNode: 'کپی',
+        copyNodeTitle: 'کپی گره',
+        copyNodeSubtitle: 'کپی کردن {name} همراه با کل زیرشاخه‌اش',
+        copyTargetLabel: 'اتصال کپی به',
+        copyNewRootOption: '— ریشهٔ مستقل جدید —',
+        copyAction: 'کپی',
         linkNodesTitle: 'پیوند گره‌ها',
         linkNodesSubtitle: 'اتصال «{name}» به گره دیگر',
         linkDirectionLabel: 'جهت پیوند',
@@ -1034,6 +1184,7 @@ export const translations: Record<Language, TranslationKeys> = {
         chooseNodePlaceholder: 'یک گره انتخاب کنید...',
         createLink: 'ایجاد پیوند',
         spacesTitle: 'فضاها',
+        adminSpaceBadge: 'مدیر',
         spacesSubtitle: 'مدیریت و جابه‌جایی بین فضاها',
         deleteSpaceTitle: 'حذف فضا',
         spaceNameLabel: 'نام فضا',
@@ -1067,6 +1218,15 @@ export const translations: Record<Language, TranslationKeys> = {
         showStatsLabel: 'نمایش آمار',
         nodeScaleLabel: 'اندازه گره‌ها',
         reduceMotionLabel: 'کاهش انیمیشن',
+        shortcutsLabel: 'میانبرهای صفحه‌کلید',
+        shortcutSearch: 'فوکوس روی جستجو',
+        shortcutAddNode: 'افزودن فرزند (ریشه، اگر چیزی انتخاب نشده باشد)',
+        shortcutEdit: 'ویرایش گره انتخاب‌شده',
+        shortcutLink: 'اتصال گره انتخاب‌شده',
+        shortcutDelete: 'حذف گره انتخاب‌شده',
+        shortcutUndo: 'بازگردانی آخرین حذف',
+        shortcutAutoLayout: 'چیدمان خودکار',
+        shortcutClose: 'بستن پنجره / لغو انتخاب',
         compactHudLabel: 'نوار ابزار فشرده',
         resetSettings: 'بازنشانی به پیش‌فرض',
         close: 'بستن',

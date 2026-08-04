@@ -1,15 +1,18 @@
 <script setup lang="ts">
-import { X, Plus, Palette, Tag } from 'lucide-vue-next';
-import { ref } from 'vue';
+import { X, Plus, Palette, Tag, UserPlus } from 'lucide-vue-next';
+import { computed, ref } from 'vue';
 import { useT } from '../lib/i18n';
 import AttachmentEditor from './AttachmentEditor.vue';
 import type { PendingAttachment } from './AttachmentEditor.vue';
 import MapFields from './MapFields.vue';
 import PositionFields from './PositionFields.vue';
-import type { NodeData } from './SpaceScene.vue';
+import ShapeFields from './ShapeFields.vue';
+import type { NodeData, NodeShape } from './SpaceScene.vue';
 
-defineProps<{
+const props = defineProps<{
     parentNode: NodeData | null;
+    /** В Admin-пространстве «Добавить корень» создаёт не узел, а пользователя. */
+    isAdminSpace?: boolean;
 }>();
 
 const t = useT();
@@ -28,10 +31,27 @@ const emit = defineEmits<{
             map_title: string | null;
             pos_x: number | null;
             pos_y: number | null;
+            shape: NodeShape;
+            logoFile: File | null;
             pending: PendingAttachment[];
         },
     ): void;
+    (
+        e: 'submit-user',
+        payload: {
+            title: string;
+            username: string;
+            email: string;
+            password: string;
+            color: string;
+            shape: NodeShape;
+            tags: string;
+            logoFile: File | null;
+        },
+    ): void;
 }>();
+
+const isUserForm = computed(() => props.isAdminSpace && !props.parentNode);
 
 const title = ref('');
 const description = ref('');
@@ -42,7 +62,12 @@ const mapLon = ref('');
 const mapTitle = ref('');
 const posX = ref('');
 const posY = ref('');
+const shape = ref<NodeShape>('circle');
+const logoFile = ref<File | null>(null);
 const pending = ref<PendingAttachment[]>([]);
+const username = ref('');
+const email = ref('');
+const password = ref('');
 
 /** Пустое поле означает «точки нет», а не ноль. */
 function toCoord(value: string): number | null {
@@ -71,6 +96,25 @@ function handleSubmit() {
         return;
     }
 
+    if (isUserForm.value) {
+        if (!username.value.trim() || !email.value.trim() || !password.value.trim()) {
+            return;
+        }
+
+        emit('submit-user', {
+            title: title.value.trim(),
+            username: username.value.trim(),
+            email: email.value.trim(),
+            password: password.value,
+            color: color.value,
+            shape: shape.value,
+            tags: tags.value.trim(),
+            logoFile: logoFile.value,
+        });
+
+        return;
+    }
+
     emit('submit', {
         title: title.value.trim(),
         description: description.value.trim(),
@@ -81,6 +125,8 @@ function handleSubmit() {
         map_title: mapTitle.value.trim() || null,
         pos_x: toCoord(posX.value),
         pos_y: toCoord(posY.value),
+        shape: shape.value,
+        logoFile: logoFile.value,
         pending: pending.value,
     });
 }
@@ -98,13 +144,26 @@ function handleSubmit() {
                     <div
                         class="rounded-xl border border-blue-500/30 bg-blue-600/20 p-2 text-blue-400"
                     >
-                        <Plus class="h-5 w-5" />
+                        <UserPlus v-if="isUserForm" class="h-5 w-5" />
+                        <Plus v-else class="h-5 w-5" />
                     </div>
                     <div>
                         <h3 class="text-base font-bold">
-                            {{ parentNode ? t.addChildTitle : t.addRootNode }}
+                            {{
+                                isUserForm
+                                    ? t.addUserTitle
+                                    : parentNode
+                                      ? t.addChildTitle
+                                      : t.addRootNode
+                            }}
                         </h3>
-                        <p v-if="parentNode" class="text-xs text-slate-400">
+                        <p v-if="isUserForm" class="text-xs text-slate-400">
+                            {{ t.newUserHint }}
+                        </p>
+                        <p
+                            v-else-if="parentNode"
+                            class="text-xs text-slate-400"
+                        >
                             {{ t.parentLabel }}: {{ parentNode.title }}
                         </p>
                         <p v-else class="text-xs text-slate-400">
@@ -125,7 +184,10 @@ function handleSubmit() {
             >
                 <div>
                     <label class="mb-1 block font-semibold text-slate-300"
-                        >{{ t.titleLabel }} *</label
+                        >{{
+                            isUserForm ? t.displayNameLabel : t.titleLabel
+                        }}
+                        *</label
                     >
                     <input
                         v-model="title"
@@ -136,7 +198,49 @@ function handleSubmit() {
                     />
                 </div>
 
-                <div>
+                <template v-if="isUserForm">
+                    <div>
+                        <label
+                            class="mb-1 block font-semibold text-slate-300"
+                            >{{ t.usernameLabel }} *</label
+                        >
+                        <input
+                            v-model="username"
+                            type="text"
+                            required
+                            autocomplete="off"
+                            class="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-100 focus:border-blue-500 focus:outline-none"
+                        />
+                    </div>
+                    <div>
+                        <label
+                            class="mb-1 block font-semibold text-slate-300"
+                            >{{ t.userEmailLabel }} *</label
+                        >
+                        <input
+                            v-model="email"
+                            type="email"
+                            required
+                            autocomplete="off"
+                            class="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-100 focus:border-blue-500 focus:outline-none"
+                        />
+                    </div>
+                    <div>
+                        <label
+                            class="mb-1 block font-semibold text-slate-300"
+                            >{{ t.passwordLabel }} *</label
+                        >
+                        <input
+                            v-model="password"
+                            type="password"
+                            required
+                            autocomplete="new-password"
+                            class="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-100 focus:border-blue-500 focus:outline-none"
+                        />
+                    </div>
+                </template>
+
+                <div v-else>
                     <label class="mb-1 block font-semibold text-slate-300">{{
                         t.descriptionLabel
                     }}</label>
@@ -193,19 +297,23 @@ function handleSubmit() {
                     />
                 </div>
 
-                <MapFields
-                    v-model:lat="mapLat"
-                    v-model:lon="mapLon"
-                    v-model:map-title="mapTitle"
-                />
+                <template v-if="!isUserForm">
+                    <MapFields
+                        v-model:lat="mapLat"
+                        v-model:lon="mapLon"
+                        v-model:map-title="mapTitle"
+                    />
 
-                <PositionFields
-                    v-if="!parentNode"
-                    v-model:pos-x="posX"
-                    v-model:pos-y="posY"
-                />
+                    <PositionFields
+                        v-if="!parentNode"
+                        v-model:pos-x="posX"
+                        v-model:pos-y="posY"
+                    />
+                </template>
 
-                <AttachmentEditor v-model:pending="pending" />
+                <ShapeFields v-model:shape="shape" v-model:logo-file="logoFile" />
+
+                <AttachmentEditor v-if="!isUserForm" v-model:pending="pending" />
             </div>
 
             <div
@@ -221,7 +329,7 @@ function handleSubmit() {
                     @click="handleSubmit"
                     class="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-md hover:bg-blue-500"
                 >
-                    {{ t.addNode }}
+                    {{ isUserForm ? t.createUserAction : t.addNode }}
                 </button>
             </div>
         </div>

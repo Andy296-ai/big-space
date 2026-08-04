@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\AttachmentController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\GraphController;
@@ -17,38 +18,49 @@ Route::middleware('auth')->group(function () {
     Route::get('/', [GraphController::class, 'index'])->name('home');
 
     Route::prefix('api')->group(function () {
-        // Spaces
+        // Spaces: список и создание видят всех пространств пользователя, а не чужих.
         Route::get('/spaces', [SpaceController::class, 'index']);
         Route::post('/spaces', [SpaceController::class, 'store']);
         Route::post('/spaces/import', [SpaceController::class, 'import']);
-        Route::get('/spaces/{space}/export', [SpaceController::class, 'export']);
-        Route::put('/spaces/{space}/structure', [SpaceController::class, 'updateStructure']);
-        Route::delete('/spaces/{space}', [SpaceController::class, 'destroy']);
 
-        // Graph data & operations
-        Route::get('/spaces/{space}/graph', [GraphController::class, 'fetchGraph']);
-        Route::post('/spaces/{space}/nodes/root', [GraphController::class, 'createRoot']);
-        Route::post('/spaces/{space}/nodes/{parent}/child', [GraphController::class, 'addChild']);
-        Route::put('/spaces/{space}/nodes/bulk-move', [GraphController::class, 'bulkMove']);
-        Route::put('/spaces/{space}/nodes/{node}/move', [GraphController::class, 'move']);
-        Route::put('/spaces/{space}/nodes/{node}', [GraphController::class, 'update']);
+        // Пользователи — узлы в Admin-пространстве; управляет только root.
+        Route::post('/admin/users', [UserController::class, 'store']);
+        Route::delete('/admin/users/{user}', [UserController::class, 'destroy']);
 
-        // Attachments: uploaded files and external links
-        Route::get('/spaces/{space}/attachments/search', [AttachmentController::class, 'search']);
-        Route::post('/spaces/{space}/nodes/{node}/attachments', [AttachmentController::class, 'store']);
-        Route::get('/spaces/{space}/nodes/{node}/attachments/{attachment}/download', [AttachmentController::class, 'download']);
-        Route::get('/spaces/{space}/nodes/{node}/attachments/{attachment}/preview', [AttachmentController::class, 'preview']);
-        Route::get('/spaces/{space}/nodes/{node}/attachments/{attachment}/content', [AttachmentController::class, 'content']);
-        Route::put('/spaces/{space}/nodes/{node}/attachments/{attachment}/content', [AttachmentController::class, 'updateContent']);
-        Route::delete('/spaces/{space}/nodes/{node}/attachments/{attachment}', [AttachmentController::class, 'destroy']);
+        // Всё, что привязано к конкретному пространству: владелец или root.
+        Route::middleware('can:access,space')->prefix('spaces/{space}')->group(function () {
+            Route::get('/export', [SpaceController::class, 'export']);
+            Route::put('/structure', [SpaceController::class, 'updateStructure']);
+            Route::delete('/', [SpaceController::class, 'destroy']);
 
-        // Links & cycle checks
-        Route::post('/spaces/{space}/links', [GraphController::class, 'link']);
-        Route::delete('/spaces/{space}/links', [GraphController::class, 'unlink']);
+            // Graph data & operations
+            Route::get('/graph', [GraphController::class, 'fetchGraph']);
+            Route::post('/nodes/root', [GraphController::class, 'createRoot']);
+            Route::post('/nodes/{parent}/child', [GraphController::class, 'addChild']);
+            Route::post('/nodes/{node}/copy', [GraphController::class, 'copy']);
+            Route::put('/nodes/bulk-move', [GraphController::class, 'bulkMove']);
+            Route::put('/nodes/{node}/move', [GraphController::class, 'move']);
+            Route::put('/nodes/{node}', [GraphController::class, 'update']);
+            Route::get('/nodes/{node}/logo', [GraphController::class, 'logo']);
+            Route::post('/nodes/{node}/logo', [GraphController::class, 'uploadLogo']);
 
-        // Deletion & Undo
-        Route::get('/spaces/{space}/nodes/{node}/deletion-preview', [GraphController::class, 'computeDeletion']);
-        Route::post('/spaces/{space}/nodes/delete-many', [GraphController::class, 'deleteNodes']);
-        Route::post('/spaces/{space}/nodes/restore', [GraphController::class, 'restoreNodes']);
+            // Attachments: uploaded files and external links
+            Route::get('/attachments/search', [AttachmentController::class, 'search']);
+            Route::post('/nodes/{node}/attachments', [AttachmentController::class, 'store']);
+            Route::get('/nodes/{node}/attachments/{attachment}/download', [AttachmentController::class, 'download']);
+            Route::get('/nodes/{node}/attachments/{attachment}/preview', [AttachmentController::class, 'preview']);
+            Route::get('/nodes/{node}/attachments/{attachment}/content', [AttachmentController::class, 'content']);
+            Route::put('/nodes/{node}/attachments/{attachment}/content', [AttachmentController::class, 'updateContent']);
+            Route::delete('/nodes/{node}/attachments/{attachment}', [AttachmentController::class, 'destroy']);
+
+            // Links & cycle checks
+            Route::post('/links', [GraphController::class, 'link']);
+            Route::delete('/links', [GraphController::class, 'unlink']);
+
+            // Deletion & Undo
+            Route::get('/nodes/{node}/deletion-preview', [GraphController::class, 'computeDeletion']);
+            Route::post('/nodes/delete-many', [GraphController::class, 'deleteNodes']);
+            Route::post('/nodes/restore', [GraphController::class, 'restoreNodes']);
+        });
     });
 });

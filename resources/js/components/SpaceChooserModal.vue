@@ -18,6 +18,7 @@ export interface SpaceItem {
     slug: string;
     description: string;
     structure: SpaceStructure;
+    is_admin: boolean;
     nodes_count?: number;
     edges_count?: number;
 }
@@ -136,6 +137,11 @@ function handleCreate() {
                             <span class="text-sm font-bold text-slate-100">{{
                                 s.name
                             }}</span>
+                            <span
+                                v-if="s.is_admin"
+                                class="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-amber-400 uppercase"
+                                >{{ t.adminSpaceBadge }}</span
+                            >
                             <CheckCircle2
                                 v-if="s.id === currentSpaceId"
                                 class="h-4 w-4 shrink-0 text-blue-400"
@@ -163,7 +169,7 @@ function handleCreate() {
                         </button>
 
                         <button
-                            v-if="spaces.length > 1"
+                            v-if="spaces.length > 1 && !s.is_admin"
                             @click.stop="emit('delete-space', s.id)"
                             class="rounded-xl p-2 text-slate-500 transition-colors hover:bg-rose-950/40 hover:text-rose-400"
                             :title="t.deleteSpaceTitle"

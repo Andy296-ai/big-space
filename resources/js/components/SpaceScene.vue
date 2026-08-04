@@ -13,15 +13,21 @@ export interface NodeData {
     depth: number;
     color: string;
     tags: string;
+    shape: NodeShape;
+    logo_url: string | null;
     tree_root_id: number | null;
     map_lat: number | null;
     map_lon: number | null;
     map_title: string | null;
+    linked_user_id: number | null;
+    linked_space_id: number | null;
     // Приходят только из /graph; у только что созданного узла их ещё нет.
     attachments?: AttachmentData[];
     created_at: string;
     updated_at: string;
 }
+
+export type NodeShape = 'circle' | 'square' | 'triangle' | 'diamond' | 'hexagon';
 
 /** Файл или ссылка, прикреплённые к узлу. */
 export interface AttachmentData {
@@ -138,6 +144,84 @@ function nodeRadius(node: NodeData): number {
     return (
         Math.max(8, BASE_RADIUS - node.depth * 0.8) * props.settings.nodeScale
     );
+}
+
+/** Единая трассировка контура фигуры узла — для заливки, обводки и свечения. */
+function traceNodeShape(
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    cy: number,
+    radius: number,
+    shape: NodeShape,
+) {
+    ctx.beginPath();
+
+    switch (shape) {
+        case 'square': {
+            const s = radius * Math.SQRT2;
+            ctx.rect(cx - s / 2, cy - s / 2, s, s);
+            break;
+        }
+        case 'triangle': {
+            const h = radius * 1.3;
+            ctx.moveTo(cx, cy - h);
+            ctx.lineTo(cx - h * 0.94, cy + h * 0.66);
+            ctx.lineTo(cx + h * 0.94, cy + h * 0.66);
+            ctx.closePath();
+            break;
+        }
+        case 'diamond':
+            ctx.moveTo(cx, cy - radius * 1.25);
+            ctx.lineTo(cx + radius * 1.25, cy);
+            ctx.lineTo(cx, cy + radius * 1.25);
+            ctx.lineTo(cx - radius * 1.25, cy);
+            ctx.closePath();
+            break;
+        case 'hexagon':
+            for (let i = 0; i < 6; i++) {
+                const angle = (Math.PI / 3) * i - Math.PI / 2;
+                const x = cx + radius * 1.1 * Math.cos(angle);
+                const y = cy + radius * 1.1 * Math.sin(angle);
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+
+            ctx.closePath();
+            break;
+        case 'circle':
+        default:
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+            break;
+    }
+}
+
+/** Картинки логотипов грузятся асинхронно и кэшируются по URL на весь сеанс сцены. */
+const logoCache = new Map<string, HTMLImageElement | 'loading' | 'error'>();
+
+function getLogoImage(url: string): HTMLImageElement | null {
+    const cached = logoCache.get(url);
+
+    if (cached instanceof HTMLImageElement) {
+        return cached;
+    }
+
+    if (cached === undefined) {
+        logoCache.set(url, 'loading');
+        const img = new Image();
+
+        img.onload = () => {
+            logoCache.set(url, img);
+            needsRedraw = true;
+        };
+        img.onerror = () => logoCache.set(url, 'error');
+        img.src = url;
+    }
+
+    return null;
 }
 
 function worldToScreen(wx: number, wy: number) {
@@ -383,6 +467,7 @@ function drawLabel(
 function drawNode(ctx: CanvasRenderingContext2D, node: NodeData) {
     const center = worldToScreen(node.pos_x, node.pos_y);
     const radius = nodeRadius(node) * camera.scale;
+    const shape = node.shape || 'circle';
 
     const selected = props.selectedNodeId === node.id;
     const hovered = props.hoveredNodeId === node.id;
@@ -395,19 +480,36 @@ function drawNode(ctx: CanvasRenderingContext2D, node: NodeData) {
 
     // Свечение выделенного и подсвеченного узла.
     if (selected || hovered) {
-        ctx.beginPath();
-        ctx.arc(center.x, center.y, radius * 1.55, 0, Math.PI * 2);
+        traceNodeShape(ctx, center.x, center.y, radius * 1.55, shape);
         ctx.fillStyle = selected ? theme.accent : color;
         ctx.globalAlpha = alpha * (selected ? 0.28 : 0.18);
         ctx.fill();
         ctx.globalAlpha = alpha;
     }
 
-    ctx.beginPath();
-    ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+    traceNodeShape(ctx, center.x, center.y, radius, shape);
     ctx.fillStyle = color;
     ctx.fill();
 
+    // Логотип рисуется поверх заливки, обрезанный по контуру фигуры — пока
+    // картинка не загрузилась, виден просто цветной фон.
+    const logo = node.logo_url ? getLogoImage(node.logo_url) : null;
+
+    if (logo) {
+        ctx.save();
+        traceNodeShape(ctx, center.x, center.y, radius, shape);
+        ctx.clip();
+        ctx.drawImage(
+            logo,
+            center.x - radius,
+            center.y - radius,
+            radius * 2,
+            radius * 2,
+        );
+        ctx.restore();
+    }
+
+    traceNodeShape(ctx, center.x, center.y, radius, shape);
     ctx.lineWidth = selected ? 2.5 : hovered ? 2 : 1;
     ctx.strokeStyle = selected ? theme.accent : theme.labelBg;
     ctx.stroke();

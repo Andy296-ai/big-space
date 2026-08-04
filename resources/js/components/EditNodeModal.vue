@@ -6,7 +6,8 @@ import AttachmentEditor from './AttachmentEditor.vue';
 import type { PendingAttachment } from './AttachmentEditor.vue';
 import MapFields from './MapFields.vue';
 import PositionFields from './PositionFields.vue';
-import type { NodeData } from './SpaceScene.vue';
+import ShapeFields from './ShapeFields.vue';
+import type { NodeData, NodeShape } from './SpaceScene.vue';
 
 const props = defineProps<{
     node: NodeData | null;
@@ -29,6 +30,8 @@ const emit = defineEmits<{
             map_title: string | null;
             pos_x: number | null;
             pos_y: number | null;
+            shape: NodeShape;
+            logoFile: File | null;
             pending: PendingAttachment[];
         },
     ): void;
@@ -44,6 +47,8 @@ const mapLon = ref('');
 const mapTitle = ref('');
 const posX = ref('');
 const posY = ref('');
+const shape = ref<NodeShape>('circle');
+const logoFile = ref<File | null>(null);
 const pending = ref<PendingAttachment[]>([]);
 
 /** Пустое поле означает «точки нет», а не ноль. */
@@ -81,6 +86,8 @@ watch(
             mapTitle.value = newNode.map_title ?? '';
             posX.value = newNode.pos_x?.toString() ?? '';
             posY.value = newNode.pos_y?.toString() ?? '';
+            shape.value = newNode.shape || 'circle';
+            logoFile.value = null;
             pending.value = [];
         }
     },
@@ -103,6 +110,8 @@ function handleSubmit() {
         map_title: mapTitle.value.trim() || null,
         pos_x: props.node.depth === 0 ? toCoord(posX.value) : null,
         pos_y: props.node.depth === 0 ? toCoord(posY.value) : null,
+        shape: shape.value,
+        logoFile: logoFile.value,
         pending: pending.value,
     });
 }
@@ -222,6 +231,12 @@ function handleSubmit() {
                     v-if="node?.depth === 0"
                     v-model:pos-x="posX"
                     v-model:pos-y="posY"
+                />
+
+                <ShapeFields
+                    v-model:shape="shape"
+                    v-model:logo-file="logoFile"
+                    :existing-logo-url="node?.logo_url"
                 />
 
                 <AttachmentEditor
