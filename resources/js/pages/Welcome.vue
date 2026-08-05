@@ -8,12 +8,14 @@ import type { PendingAttachment } from '../components/AttachmentEditor.vue';
 import CopyNodeModal from '../components/CopyNodeModal.vue';
 import DeleteConfirmModal from '../components/DeleteConfirmModal.vue';
 import EditNodeModal from '../components/EditNodeModal.vue';
+import GlobalSearchModal from '../components/GlobalSearchModal.vue';
 import HudOverlay from '../components/HudOverlay.vue';
 import LinkNodeDialog from '../components/LinkNodeDialog.vue';
 import Minimap from '../components/Minimap.vue';
 import NodeInfoDialog from '../components/NodeInfoDialog.vue';
 import ResetPasswordModal from '../components/ResetPasswordModal.vue';
 import SettingsPanel from '../components/SettingsPanel.vue';
+import ShareSpaceModal from '../components/ShareSpaceModal.vue';
 import SpaceChooserModal from '../components/SpaceChooserModal.vue';
 import type { SpaceItem } from '../components/SpaceChooserModal.vue';
 import type {
@@ -21,6 +23,8 @@ import type {
     EdgeData,
     NodeData,
     NodeShape,
+    PresenceUser,
+    RemoteCursor,
 } from '../components/SpaceScene.vue';
 import SpaceScene from '../components/SpaceScene.vue';
 import { apiFetch } from '../lib/api';
@@ -38,12 +42,17 @@ import { computeLayout } from '../utils/layoutEngine';
 const props = defineProps<{
     currentSpace: SpaceItem;
     spaces: SpaceItem[];
+    focusNodeId: number | null;
 }>();
 
 const sceneRef = ref<InstanceType<typeof SpaceScene> | null>(null);
 const hudRef = ref<InstanceType<typeof HudOverlay> | null>(null);
 
 const isRoot = computed(() => usePage().props.auth.user.is_root);
+
+// Viewer-доступ к расшаренному пространству — весь UI изменения графа
+// прячется по этому флагу; сервер сам всё равно проверяет can:edit,space.
+const canEdit = computed(() => props.currentSpace.role !== 'viewer');
 
 const nodes = ref<NodeData[]>([]);
 const edges = ref<EdgeData[]>([]);
@@ -63,6 +72,8 @@ const showResetPasswordModal = ref(false);
 const resetPasswordError = ref<string | null>(null);
 const resetPasswordSaving = ref(false);
 const showActivityLogModal = ref(false);
+const showGlobalSearch = ref(false);
+const shareTargetSpace = ref<SpaceItem | null>(null);
 const addModalParentNode = ref<NodeData | null>(null);
 
 // Снимок удалённого хранится на сервере — здесь только одноразовый токен на него.
@@ -240,9 +251,15 @@ async function loadGraph() {
     }
 }
 
-onMounted(() => {
+onMounted(async () => {
     applyTheme(appSettings.value);
-    loadGraph();
+    await loadGraph();
+
+    // Переход из глобального поиска (?focus=id) — сервер уже проверил, что
+    // узел действительно в этом пространстве (см. GraphController::index).
+    if (props.focusNodeId !== null) {
+        handleFocusNode(props.focusNodeId);
+    }
 });
 
 // Живые обновления: другой человек/вкладка меняет граф этого пространства —
@@ -273,6 +290,95 @@ onUnmounted(() => {
         clearTimeout(liveSyncTimer);
     }
 });
+
+// Presence: кто ещё сейчас смотрит это пространство, плюс живые курсоры
+// поверх канваса — оба поверх одного presence-канала (whisper для курсоров,
+// чтобы не гонять их через сервер).
+const presenceUsers = ref<PresenceUser[]>([]);
+const remoteCursors = ref<Map<number, RemoteCursor>>(new Map());
+const remoteCursorList = computed(() =>
+    Array.from(remoteCursors.value.values()),
+);
+// .here() отдаёт всех в канале, включая нас самих — в списке "кто ещё здесь" это лишнее.
+const otherPresenceUsers = computed(() =>
+    presenceUsers.value.filter((u) => u.id !== currentUserId.value),
+);
+const presenceChannelName = `space.${props.currentSpace.id}.presence`;
+const currentUserId = computed(() => usePage().props.auth.user.id);
+
+onMounted(() => {
+    getEcho()
+        .join(presenceChannelName)
+        .here((users: PresenceUser[]) => {
+            presenceUsers.value = users;
+        })
+        .joining((user: PresenceUser) => {
+            if (!presenceUsers.value.some((u) => u.id === user.id)) {
+                presenceUsers.value = [...presenceUsers.value, user];
+            }
+        })
+        .leaving((user: PresenceUser) => {
+            presenceUsers.value = presenceUsers.value.filter(
+                (u) => u.id !== user.id,
+            );
+            remoteCursors.value.delete(user.id);
+        })
+        .listenForWhisper(
+            'cursor',
+            (payload: { id: number; name: string; x: number; y: number }) => {
+                remoteCursors.value.set(payload.id, {
+                    ...payload,
+                    updatedAt: Date.now(),
+                });
+            },
+        );
+});
+
+onUnmounted(() => {
+    getEcho().leave(presenceChannelName);
+});
+
+// Курсоры, от которых давно не было вестей (вкладку свернули/сеть моргнула),
+// не должны висеть на экране вечно — leaving() ловит только явный уход.
+let cursorSweepTimer: ReturnType<typeof setInterval> | null = null;
+
+onMounted(() => {
+    cursorSweepTimer = setInterval(() => {
+        const cutoff = Date.now() - 8000;
+
+        remoteCursors.value.forEach((cursor, id) => {
+            if (cursor.updatedAt < cutoff) {
+                remoteCursors.value.delete(id);
+            }
+        });
+    }, 2000);
+});
+
+onUnmounted(() => {
+    if (cursorSweepTimer) {
+        clearInterval(cursorSweepTimer);
+    }
+});
+
+let cursorWhisperTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Троттлим до ~20/сек — курсору не нужна миллисекундная точность, а трафик экономит заметно. */
+function broadcastCursorPosition(worldX: number, worldY: number) {
+    if (cursorWhisperTimer) {
+        return;
+    }
+
+    cursorWhisperTimer = setTimeout(() => {
+        cursorWhisperTimer = null;
+    }, 50);
+
+    getEcho().join(presenceChannelName).whisper('cursor', {
+        id: currentUserId.value,
+        name: usePage().props.auth.user.name,
+        x: worldX,
+        y: worldY,
+    });
+}
 
 function handleUpdateSettings(newSettings: AppSettings) {
     appSettings.value = newSettings;
@@ -479,7 +585,9 @@ const isAnyModalOpen = computed(
         showCopyModal.value ||
         showDeleteModal.value ||
         showResetPasswordModal.value ||
-        showActivityLogModal.value,
+        showActivityLogModal.value ||
+        showGlobalSearch.value ||
+        shareTargetSpace.value !== null,
 );
 
 /** Пока фокус в поле ввода, буквенные хоткеи должны просто печататься как текст. */
@@ -512,9 +620,20 @@ function handleGlobalKeydown(event: KeyboardEvent) {
             showDeleteModal.value = false;
             showResetPasswordModal.value = false;
             showActivityLogModal.value = false;
+            showGlobalSearch.value = false;
+            shareTargetSpace.value = null;
         } else if (selectedNode.value) {
             selectedNode.value = null;
         }
+
+        return;
+    }
+
+    // Универсальный «поиск везде» — работает и из текстовых полей, как в
+    // большинстве приложений (Slack, Linear, Notion и т.п.).
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        showGlobalSearch.value = true;
 
         return;
     }
@@ -545,6 +664,10 @@ function handleGlobalKeydown(event: KeyboardEvent) {
             break;
         case 'n':
         case 'N':
+            if (!canEdit.value) {
+                break;
+            }
+
             if (selectedNode.value) {
                 openAddChildModal();
             } else {
@@ -554,28 +677,31 @@ function handleGlobalKeydown(event: KeyboardEvent) {
             break;
         case 'e':
         case 'E':
-            if (selectedNode.value) {
+            if (canEdit.value && selectedNode.value) {
                 showEditModal.value = true;
             }
 
             break;
         case 'l':
         case 'L':
-            if (selectedNode.value) {
+            if (canEdit.value && selectedNode.value) {
                 showLinkModal.value = true;
             }
 
             break;
         case 'Delete':
         case 'Backspace':
-            if (selectedNode.value) {
+            if (canEdit.value && selectedNode.value) {
                 showDeleteModal.value = true;
             }
 
             break;
         case 'a':
         case 'A':
-            handleAutoLayout();
+            if (canEdit.value) {
+                handleAutoLayout();
+            }
+
             break;
     }
 }
@@ -722,6 +848,11 @@ async function handleEditNode(payload: {
     } catch (err) {
         console.error('Failed to update node:', err);
     }
+}
+
+async function handleNodeRestored(updated: NodeData) {
+    await loadGraph();
+    selectedNode.value = nodes.value.find((n) => n.id === updated.id) ?? null;
 }
 
 async function handleLinkNodes(payload: {
@@ -915,6 +1046,14 @@ function handleSelectSpace(space: SpaceItem) {
     router.get('/', { space: space.slug });
 }
 
+function handleGlobalSearchSelect(payload: {
+    spaceSlug: string;
+    nodeId: number;
+}) {
+    showGlobalSearch.value = false;
+    router.get('/', { space: payload.spaceSlug, focus: payload.nodeId });
+}
+
 async function handleCreateSpace(payload: {
     name: string;
     description: string;
@@ -999,9 +1138,12 @@ async function handleDeleteSpace(spaceId: number) {
             :can-undo="!!undoToken"
             :settings="appSettings"
             :is-root="isRoot"
+            :can-edit="canEdit"
+            :presence-users="otherPresenceUsers"
             @open-space-modal="showSpaceModal = true"
             @open-settings-modal="showSettingsModal = true"
             @open-activity-log="showActivityLogModal = true"
+            @open-global-search="showGlobalSearch = true"
             @open-add-root-modal="openAddRootModal"
             @focus-node="handleFocusNode"
             @undo="handleUndo"
@@ -1018,10 +1160,13 @@ async function handleDeleteSpace(spaceId: number) {
             :hovered-node-id="hoveredNode?.id ?? null"
             :filtered-node-ids="filteredNodeIds"
             :settings="appSettings"
+            :can-edit="canEdit"
+            :remote-cursors="remoteCursorList"
             @select-node="handleSelectNode"
             @hover-node="handleHoverNode"
             @move-node="handleMoveNode"
             @update-camera="(c) => (cameraState = c)"
+            @cursor-move="(pos) => broadcastCursorPosition(pos.x, pos.y)"
         />
 
         <!-- Interactive 2D Minimap -->
@@ -1039,6 +1184,7 @@ async function handleDeleteSpace(spaceId: number) {
         <NodeInfoDialog
             :space-id="currentSpace.id"
             :node="selectedNode"
+            :can-edit="canEdit"
             :children-count="
                 edges.filter((e) => e.parent_id === selectedNode?.id).length
             "
@@ -1054,6 +1200,7 @@ async function handleDeleteSpace(spaceId: number) {
                 resetPasswordError = null;
                 showResetPasswordModal = true;
             "
+            @node-restored="handleNodeRestored"
             @delete="showDeleteModal = true"
         />
 
@@ -1067,6 +1214,16 @@ async function handleDeleteSpace(spaceId: number) {
             @create-space="handleCreateSpace"
             @delete-space="handleDeleteSpace"
             @import-space="handleImportSpace"
+            @open-share="
+                shareTargetSpace = $event;
+                showSpaceModal = false;
+            "
+        />
+
+        <ShareSpaceModal
+            v-if="shareTargetSpace"
+            :space="shareTargetSpace"
+            @close="shareTargetSpace = null"
         />
 
         <AddNodeModal
@@ -1114,6 +1271,12 @@ async function handleDeleteSpace(spaceId: number) {
         <ActivityLogModal
             v-if="showActivityLogModal"
             @close="showActivityLogModal = false"
+        />
+
+        <GlobalSearchModal
+            v-if="showGlobalSearch"
+            @close="showGlobalSearch = false"
+            @select="handleGlobalSearchSelect"
         />
 
         <DeleteConfirmModal

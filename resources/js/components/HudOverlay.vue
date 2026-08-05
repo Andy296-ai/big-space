@@ -8,6 +8,7 @@ import {
     Layers,
     LogOut,
     ScrollText,
+    Telescope,
     Wand2,
     Settings,
 } from 'lucide-vue-next';
@@ -15,7 +16,7 @@ import { ref, computed } from 'vue';
 import { translations } from '../types/settings';
 import type { AppSettings } from '../types/settings';
 import NodusMark from './NodusMark.vue';
-import type { NodeData } from './SpaceScene.vue';
+import type { NodeData, PresenceUser } from './SpaceScene.vue';
 
 const props = defineProps<{
     spaceName: string;
@@ -24,6 +25,8 @@ const props = defineProps<{
     canUndo: boolean;
     settings: AppSettings;
     isRoot: boolean;
+    canEdit: boolean;
+    presenceUsers: PresenceUser[];
 }>();
 
 const emit = defineEmits<{
@@ -31,6 +34,7 @@ const emit = defineEmits<{
     (e: 'open-settings-modal'): void;
     (e: 'open-add-root-modal'): void;
     (e: 'open-activity-log'): void;
+    (e: 'open-global-search'): void;
     (e: 'focus-node', nodeId: number): void;
     (e: 'undo'): void;
     (e: 'auto-layout'): void;
@@ -145,6 +149,13 @@ defineExpose({ focusSearch });
                 </div>
             </div>
             <div class="mx-1 h-6 w-px bg-slate-700" />
+            <button
+                @click="emit('open-global-search')"
+                class="rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
+                :title="`${t.globalSearchAction} (Ctrl/⌘ K)`"
+            >
+                <Telescope class="h-4 w-4" />
+            </button>
             <button
                 v-if="isRoot"
                 @click="emit('open-activity-log')"
@@ -299,6 +310,27 @@ defineExpose({ focusSearch });
 
         <!-- Right: Stats & Actions -->
         <div class="pointer-events-auto flex items-center gap-3">
+            <!-- Кто ещё сейчас смотрит это пространство -->
+            <div
+                v-if="presenceUsers.length"
+                class="hidden items-center -space-x-2 rounded-2xl border border-slate-700/60 bg-slate-900/80 py-1.5 pr-3 pl-1.5 shadow-xl backdrop-blur-md sm:flex"
+                :title="presenceUsers.map((u) => u.name).join(', ')"
+            >
+                <span
+                    v-for="u in presenceUsers.slice(0, 4)"
+                    :key="u.id"
+                    class="flex h-6 w-6 items-center justify-center rounded-full border-2 border-slate-900 bg-emerald-600 text-[10px] font-bold text-white uppercase"
+                >
+                    {{ u.name.slice(0, 2) }}
+                </span>
+                <span
+                    v-if="presenceUsers.length > 4"
+                    class="ms-1 text-[10px] font-semibold text-slate-400"
+                >
+                    +{{ presenceUsers.length - 4 }}
+                </span>
+            </div>
+
             <!-- Stats Pill -->
             <div
                 v-if="settings.showStats"
@@ -332,6 +364,7 @@ defineExpose({ focusSearch });
 
             <!-- Auto-Organize Layout Button -->
             <button
+                v-if="canEdit"
                 @click="emit('auto-layout')"
                 class="flex items-center gap-2 rounded-2xl border border-indigo-500/40 bg-indigo-600/30 px-3.5 py-2.5 text-xs font-semibold text-indigo-200 shadow-xl backdrop-blur-md transition-all hover:bg-indigo-600/50 active:scale-95"
                 :title="t.autoOrganize"
@@ -342,6 +375,7 @@ defineExpose({ focusSearch });
 
             <!-- Add Root Button -->
             <button
+                v-if="canEdit"
                 @click="emit('open-add-root-modal')"
                 class="flex items-center gap-2 rounded-2xl border border-blue-400/30 bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white shadow-xl transition-all hover:bg-blue-500 active:scale-95"
             >

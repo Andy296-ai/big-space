@@ -10,6 +10,7 @@ import {
     Edit3,
     Eye,
     GitBranch,
+    History,
     KeyRound,
     Layers,
     Link,
@@ -22,6 +23,7 @@ import {
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useT } from '../lib/i18n';
 import AttachmentViewer from './AttachmentViewer.vue';
+import NodeHistoryModal from './NodeHistoryModal.vue';
 import type { AttachmentData, NodeData } from './SpaceScene.vue';
 import SpaceStructureViewer from './SpaceStructureViewer.vue';
 
@@ -30,6 +32,7 @@ const props = defineProps<{
     node: NodeData | null;
     childrenCount: number;
     parentsCount: number;
+    canEdit: boolean;
 }>();
 
 const t = useT();
@@ -41,6 +44,7 @@ const emit = defineEmits<{
     (e: 'open-link'): void;
     (e: 'open-copy'): void;
     (e: 'open-reset-password'): void;
+    (e: 'node-restored', node: NodeData): void;
     (e: 'delete', nodeId: number): void;
 }>();
 
@@ -50,6 +54,7 @@ const FILES_SHOWN = 5;
 
 const expanded = ref(false);
 const showStructureViewer = ref(false);
+const showHistory = ref(false);
 
 // При переходе на другой узел список снова сворачивается.
 watch(
@@ -57,6 +62,7 @@ watch(
     () => {
         expanded.value = false;
         showStructureViewer.value = false;
+        showHistory.value = false;
     },
 );
 
@@ -323,6 +329,16 @@ onBeforeUnmount(() => destroyMap());
                 <span>{{ t.resetPasswordAction }}</span>
             </button>
 
+            <!-- История правок: видна всем с доступом, восстановление — только у editor/owner (проверяется на сервере) -->
+            <button
+                type="button"
+                @click="showHistory = true"
+                class="flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/50 px-3 py-2 text-xs font-semibold text-slate-200 transition-colors hover:bg-slate-700"
+            >
+                <History class="h-3.5 w-3.5 text-indigo-400" />
+                <span>{{ t.nodeHistoryAction }}</span>
+            </button>
+
             <!-- Файлы и ссылки: только если прикреплены -->
             <div v-if="attachments.length">
                 <div
@@ -395,8 +411,11 @@ onBeforeUnmount(() => destroyMap());
             </button>
         </div>
 
-        <!-- Действия -->
-        <div class="grid grid-cols-2 gap-2 border-t border-slate-800 p-5 pt-3">
+        <!-- Действия: только если есть право менять граф -->
+        <div
+            v-if="canEdit"
+            class="grid grid-cols-2 gap-2 border-t border-slate-800 p-5 pt-3"
+        >
             <button
                 @click="emit('open-add-child')"
                 class="flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow transition-all hover:bg-blue-500 active:scale-95"
@@ -452,5 +471,19 @@ onBeforeUnmount(() => destroyMap());
         :space-id="node.linked_space_id"
         :title="node.title || t.untitledNode"
         @close="showStructureViewer = false"
+    />
+
+    <NodeHistoryModal
+        v-if="showHistory && node"
+        :space-id="spaceId"
+        :node="node"
+        :can-restore="canEdit"
+        @close="showHistory = false"
+        @restored="
+            (updated) => {
+                showHistory = false;
+                emit('node-restored', updated);
+            }
+        "
     />
 </template>

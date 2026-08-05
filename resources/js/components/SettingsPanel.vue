@@ -169,6 +169,7 @@ const interfaceToggles: { key: BooleanSettingKey; labelKey: TranslationKey }[] =
 /** Список — просто шпаргалка; сами хоткеи навешаны в Welcome.vue, держим оба места в синхроне. */
 const shortcuts: { keys: string; labelKey: TranslationKey }[] = [
     { keys: '/', labelKey: 'shortcutSearch' },
+    { keys: 'Ctrl/⌘ K', labelKey: 'shortcutGlobalSearch' },
     { keys: 'N', labelKey: 'shortcutAddNode' },
     { keys: 'E', labelKey: 'shortcutEdit' },
     { keys: 'L', labelKey: 'shortcutLink' },

@@ -55,6 +55,12 @@ class Node extends Model
         return $this->hasMany(NodeAttachment::class)->orderBy('position')->orderBy('id');
     }
 
+    /** @return HasMany<NodeRevision, $this> */
+    public function revisions(): HasMany
+    {
+        return $this->hasMany(NodeRevision::class);
+    }
+
     /** Карта рисуется только когда точка задана. */
     public function hasMap(): bool
     {

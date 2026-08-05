@@ -7,6 +7,7 @@ use App\Models\ActivityLog;
 use App\Models\Edge;
 use App\Models\Node;
 use App\Models\NodeAttachment;
+use App\Models\NodeRevision;
 use App\Models\Space;
 use App\Models\User;
 use App\Services\GraphRepository;
@@ -54,12 +55,30 @@ class GraphController extends Controller
         // Admin — служебное пространство, обычной "рабочей" точкой входа быть не должно.
         $currentSpace ??= Space::where('user_id', $user->id)->where('is_admin', false)->first();
         $currentSpace ??= $provisioner->createForUser($user, 'Default Space', 'Your default graph space.');
+        $currentSpace->role = $currentSpace->roleFor($user);
 
-        $mySpaces = Space::withCount(['nodes', 'edges'])->where('user_id', $user->id)->get();
+        $owned = Space::withCount(['nodes', 'edges'])->where('user_id', $user->id)->get()
+            ->each(fn (Space $s) => $s->role = 'owner');
+        $shared = $user->sharedSpaces()->withCount(['nodes', 'edges'])->with('user:id,name')->get()
+            ->each(function (Space $s) {
+                $s->role = $s->pivot->role;
+                $s->owner_name = $s->user->name;
+            });
+
+        // Переход из глобального поиска: узел должен реально быть в этом
+        // пространстве, иначе просто ничего не подсвечиваем.
+        $focusNodeId = null;
+
+        if ($request->filled('focus')) {
+            $focusNodeId = Node::where('id', $request->query('focus'))
+                ->where('space_id', $currentSpace->id)
+                ->value('id');
+        }
 
         return Inertia::render('Welcome', [
             'currentSpace' => $currentSpace,
-            'spaces' => $mySpaces,
+            'spaces' => $owned->concat($shared)->values(),
+            'focusNodeId' => $focusNodeId,
         ]);
     }
 
@@ -233,6 +252,9 @@ class GraphController extends Controller
             'shape' => ['nullable', Rule::in(Node::SHAPES)],
         ]);
 
+        // Снимок состояния ДО правки — чтобы её можно было откатить одной кнопкой.
+        NodeRevision::snapshot($node, $request->user());
+
         $node->update([
             'title' => $validated['title'],
             'description' => $validated['description'] ?? '',
@@ -246,6 +268,47 @@ class GraphController extends Controller
             // остальных при отсутствии значения оставляем как есть.
             'pos_x' => $validated['pos_x'] ?? $node->pos_x,
             'pos_y' => $validated['pos_y'] ?? $node->pos_y,
+        ]);
+
+        return response()->json($node->load('attachments'));
+    }
+
+    /** История правок узла, новые сверху. */
+    public function nodeRevisions(Space $space, Node $node): JsonResponse
+    {
+        abort_unless($node->space_id === $space->id, 404);
+
+        $revisions = $node->revisions()
+            ->with('editor:id,name')
+            ->latest('created_at')
+            ->get();
+
+        return response()->json($revisions);
+    }
+
+    /**
+     * Откатывает узел к состоянию из снимка. Перед этим снимает ЕЩЁ один
+     * снимок — текущего (пока ещё не откаченного) состояния, поэтому сам
+     * откат тоже можно откатить через ту же историю.
+     */
+    public function restoreNodeRevision(Request $request, Space $space, Node $node, NodeRevision $revision): JsonResponse
+    {
+        abort_unless($node->space_id === $space->id, 404);
+        abort_unless($revision->node_id === $node->id, 404);
+
+        NodeRevision::snapshot($node, $request->user());
+
+        $node->update([
+            'title' => $revision->title,
+            'description' => $revision->description ?? '',
+            'color' => $revision->color ?? '',
+            'tags' => $revision->tags ?? '',
+            'shape' => $revision->shape ?? $node->shape,
+            'map_lat' => $revision->map_lat,
+            'map_lon' => $revision->map_lon,
+            'map_title' => $revision->map_title,
+            'pos_x' => $revision->pos_x ?? $node->pos_x,
+            'pos_y' => $revision->pos_y ?? $node->pos_y,
         ]);
 
         return response()->json($node->load('attachments'));

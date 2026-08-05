@@ -7,6 +7,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -60,5 +61,18 @@ class User extends Authenticatable
     public function linkedNode(): HasOne
     {
         return $this->hasOne(Node::class, 'linked_user_id');
+    }
+
+    /**
+     * Чужие пространства, расшаренные этому пользователю — с ролью в pivot.
+     *
+     * @return BelongsToMany<Space, $this, SpaceCollaboratorPivot>
+     */
+    public function sharedSpaces(): BelongsToMany
+    {
+        return $this->belongsToMany(Space::class, 'space_collaborators')
+            ->using(SpaceCollaboratorPivot::class)
+            ->withPivot('role')
+            ->withTimestamps();
     }
 }

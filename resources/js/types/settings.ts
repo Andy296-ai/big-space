@@ -285,6 +285,16 @@ export type TranslationKeys = {
     rootPositionHint: string;
     structureSectionLabel: string;
     viewStructureAction: string;
+    nodeHistoryAction: string;
+    globalSearchPlaceholder: string;
+    globalSearchEmpty: string;
+    globalSearchHint: string;
+    globalSearchAction: string;
+    nodeHistoryTitle: string;
+    nodeHistoryDesc: string;
+    nodeHistoryEmpty: string;
+    restoreVersionAction: string;
+    restoredNoticeLabel: string;
     structureEmptyLabel: string;
     shapeSectionLabel: string;
     logoSectionLabel: string;
@@ -330,6 +340,19 @@ export type TranslationKeys = {
     createLink: string;
     spacesTitle: string;
     adminSpaceBadge: string;
+    roleEditorBadge: string;
+    roleViewerBadge: string;
+    sharedByPrefix: string;
+    shareSpaceAction: string;
+    shareSpaceTitle: string;
+    shareSpaceDesc: string;
+    shareIdentifierLabel: string;
+    shareIdentifierPlaceholder: string;
+    shareRoleLabel: string;
+    shareAction: string;
+    shareEmptyLabel: string;
+    revokeAccessAction: string;
+    ownerLabel: string;
     spacesSubtitle: string;
     deleteSpaceTitle: string;
     spaceNameLabel: string;
@@ -364,6 +387,7 @@ export type TranslationKeys = {
     reduceMotionLabel: string;
     shortcutsLabel: string;
     shortcutSearch: string;
+    shortcutGlobalSearch: string;
     shortcutAddNode: string;
     shortcutEdit: string;
     shortcutLink: string;
@@ -520,6 +544,16 @@ export const translations: Record<Language, TranslationKeys> = {
             'Root nodes only — children are placed automatically.',
         structureSectionLabel: 'Structure',
         viewStructureAction: 'View structure',
+        nodeHistoryAction: 'History',
+        globalSearchPlaceholder: 'Search across all your spaces...',
+        globalSearchEmpty: 'No matches.',
+        globalSearchHint: 'Type at least 2 characters to search everywhere.',
+        globalSearchAction: 'Search everywhere',
+        nodeHistoryTitle: 'Edit history',
+        nodeHistoryDesc: 'Snapshots taken before each change',
+        nodeHistoryEmpty: 'No edits yet.',
+        restoreVersionAction: 'Restore this version',
+        restoredNoticeLabel: 'Restored',
         structureEmptyLabel: 'This space is empty.',
         shapeSectionLabel: 'Shape',
         logoSectionLabel: 'Logo',
@@ -565,6 +599,19 @@ export const translations: Record<Language, TranslationKeys> = {
         createLink: 'Create Link',
         spacesTitle: 'Spaces',
         adminSpaceBadge: 'Admin',
+        roleEditorBadge: 'Editor',
+        roleViewerBadge: 'Viewer',
+        sharedByPrefix: 'Shared by',
+        shareSpaceAction: 'Share',
+        shareSpaceTitle: 'Share space',
+        shareSpaceDesc: 'Give another user viewer or editor access',
+        shareIdentifierLabel: 'Username or email',
+        shareIdentifierPlaceholder: 'e.g. alice or alice@example.com',
+        shareRoleLabel: 'Role',
+        shareAction: 'Share',
+        shareEmptyLabel: 'No one else has access yet.',
+        revokeAccessAction: 'Revoke access',
+        ownerLabel: 'Owner',
         spacesSubtitle: 'Manage and switch between your graph spaces',
         deleteSpaceTitle: 'Delete Space',
         spaceNameLabel: 'Space Name',
@@ -600,6 +647,7 @@ export const translations: Record<Language, TranslationKeys> = {
         reduceMotionLabel: 'Reduce Motion',
         shortcutsLabel: 'Keyboard shortcuts',
         shortcutSearch: 'Focus search',
+        shortcutGlobalSearch: 'Search across all spaces',
         shortcutAddNode: 'Add child (root if nothing selected)',
         shortcutEdit: 'Edit selected node',
         shortcutLink: 'Link selected node',
@@ -755,6 +803,16 @@ export const translations: Record<Language, TranslationKeys> = {
             'Только для корневых узлов — дочерние размещаются автоматически.',
         structureSectionLabel: 'Структура',
         viewStructureAction: 'Смотреть структуру',
+        nodeHistoryAction: 'История',
+        globalSearchPlaceholder: 'Поиск по всем вашим пространствам...',
+        globalSearchEmpty: 'Ничего не найдено.',
+        globalSearchHint: 'Введите минимум 2 символа для поиска везде.',
+        globalSearchAction: 'Искать везде',
+        nodeHistoryTitle: 'История изменений',
+        nodeHistoryDesc: 'Снимки состояния перед каждой правкой',
+        nodeHistoryEmpty: 'Правок пока не было.',
+        restoreVersionAction: 'Восстановить эту версию',
+        restoredNoticeLabel: 'Восстановлено',
         structureEmptyLabel: 'Это пространство пустое.',
         shapeSectionLabel: 'Форма',
         logoSectionLabel: 'Логотип',
@@ -800,6 +858,20 @@ export const translations: Record<Language, TranslationKeys> = {
         createLink: 'Создать связь',
         spacesTitle: 'Пространства',
         adminSpaceBadge: 'Админ',
+        roleEditorBadge: 'Редактор',
+        roleViewerBadge: 'Просмотр',
+        sharedByPrefix: 'Расшарил(а)',
+        shareSpaceAction: 'Поделиться',
+        shareSpaceTitle: 'Доступ к пространству',
+        shareSpaceDesc:
+            'Дайте другому пользователю доступ на просмотр или редактирование',
+        shareIdentifierLabel: 'Логин или email',
+        shareIdentifierPlaceholder: 'например, alice или alice@example.com',
+        shareRoleLabel: 'Роль',
+        shareAction: 'Открыть доступ',
+        shareEmptyLabel: 'Пока ни у кого нет доступа.',
+        revokeAccessAction: 'Забрать доступ',
+        ownerLabel: 'Владелец',
         spacesSubtitle: 'Управление пространствами и переключение между ними',
         deleteSpaceTitle: 'Удалить пространство',
         spaceNameLabel: 'Название пространства',
@@ -835,6 +907,7 @@ export const translations: Record<Language, TranslationKeys> = {
         reduceMotionLabel: 'Меньше анимации',
         shortcutsLabel: 'Горячие клавиши',
         shortcutSearch: 'Фокус на поиске',
+        shortcutGlobalSearch: 'Поиск по всем пространствам',
         shortcutAddNode: 'Добавить потомка (корень, если ничего не выбрано)',
         shortcutEdit: 'Редактировать выбранный узел',
         shortcutLink: 'Связать выбранный узел',
@@ -990,6 +1063,17 @@ export const translations: Record<Language, TranslationKeys> = {
             'Танҳо барои гузарҳои реша — фарзандон худкор ҷойгир мешаванд.',
         structureSectionLabel: 'Сохтор',
         viewStructureAction: 'Дидани сохтор',
+        nodeHistoryAction: 'Таърих',
+        globalSearchPlaceholder: 'Ҷустуҷӯ дар ҳамаи фазоҳои шумо...',
+        globalSearchEmpty: 'Чизе ёфт нашуд.',
+        globalSearchHint:
+            'Барои ҷустуҷӯ дар ҳама ҷо на кам аз 2 аломат ворид кунед.',
+        globalSearchAction: 'Ҷустуҷӯ дар ҳама ҷо',
+        nodeHistoryTitle: 'Таърихи тағйирот',
+        nodeHistoryDesc: 'Аксҳо пеш аз ҳар тағйирот',
+        nodeHistoryEmpty: 'Ҳанӯз тағйирот набудааст.',
+        restoreVersionAction: 'Барқарор кардани ин версия',
+        restoredNoticeLabel: 'Барқарор карда шуд',
         structureEmptyLabel: 'Ин фазо холӣ аст.',
         shapeSectionLabel: 'Шакл',
         logoSectionLabel: 'Логотип',
@@ -1036,6 +1120,19 @@ export const translations: Record<Language, TranslationKeys> = {
         createLink: 'Эҷоди пайванд',
         spacesTitle: 'Фазоҳо',
         adminSpaceBadge: 'Админ',
+        roleEditorBadge: 'Муҳаррир',
+        roleViewerBadge: 'Тамошобин',
+        sharedByPrefix: 'Мубодила аз ҷониби',
+        shareSpaceAction: 'Мубодила',
+        shareSpaceTitle: 'Дастрасӣ ба фазо',
+        shareSpaceDesc: 'Ба корбари дигар дастрасии тамошо ё таҳрирро диҳед',
+        shareIdentifierLabel: 'Логин ё почтаи электронӣ',
+        shareIdentifierPlaceholder: 'масалан, alice ё alice@example.com',
+        shareRoleLabel: 'Нақш',
+        shareAction: 'Кушодани дастрасӣ',
+        shareEmptyLabel: 'Ҳанӯз ба ҳеҷ кас дастрасӣ дода нашудааст.',
+        revokeAccessAction: 'Бекор кардани дастрасӣ',
+        ownerLabel: 'Соҳиб',
         spacesSubtitle: 'Идора ва иваз кардани фазоҳо',
         deleteSpaceTitle: 'Нест кардани фазо',
         spaceNameLabel: 'Номи фазо',
@@ -1071,6 +1168,7 @@ export const translations: Record<Language, TranslationKeys> = {
         reduceMotionLabel: 'Кам кардани аниматсия',
         shortcutsLabel: 'Тугмаҳои зуд',
         shortcutSearch: 'Фокус ба ҷустуҷӯ',
+        shortcutGlobalSearch: 'Ҷустуҷӯ дар ҳамаи фазоҳо',
         shortcutAddNode:
             'Иловаи фарзанд (реша, агар чизе интихоб нашуда бошад)',
         shortcutEdit: 'Таҳрири гузари интихобшуда',
@@ -1226,6 +1324,16 @@ export const translations: Record<Language, TranslationKeys> = {
             'فقط برای گره‌های ریشه — فرزندان به‌طور خودکار جای‌گذاری می‌شوند.',
         structureSectionLabel: 'ساختار',
         viewStructureAction: 'مشاهده ساختار',
+        nodeHistoryAction: 'تاریخچه',
+        globalSearchPlaceholder: 'جستجو در همه فضاهای شما...',
+        globalSearchEmpty: 'چیزی یافت نشد.',
+        globalSearchHint: 'برای جستجو در همه‌جا حداقل ۲ نویسه وارد کنید.',
+        globalSearchAction: 'جستجو در همه‌جا',
+        nodeHistoryTitle: 'تاریخچه ویرایش',
+        nodeHistoryDesc: 'عکس‌های وضعیت پیش از هر تغییر',
+        nodeHistoryEmpty: 'هنوز ویرایشی انجام نشده است.',
+        restoreVersionAction: 'بازگردانی این نسخه',
+        restoredNoticeLabel: 'بازگردانی شد',
         structureEmptyLabel: 'این فضا خالی است.',
         shapeSectionLabel: 'شکل',
         logoSectionLabel: 'لوگو',
@@ -1271,6 +1379,19 @@ export const translations: Record<Language, TranslationKeys> = {
         createLink: 'ایجاد پیوند',
         spacesTitle: 'فضاها',
         adminSpaceBadge: 'مدیر',
+        roleEditorBadge: 'ویرایشگر',
+        roleViewerBadge: 'بیننده',
+        sharedByPrefix: 'اشتراک‌گذاری توسط',
+        shareSpaceAction: 'اشتراک‌گذاری',
+        shareSpaceTitle: 'اشتراک‌گذاری فضا',
+        shareSpaceDesc: 'به کاربر دیگری دسترسی مشاهده یا ویرایش بدهید',
+        shareIdentifierLabel: 'نام کاربری یا ایمیل',
+        shareIdentifierPlaceholder: 'مثلاً alice یا alice@example.com',
+        shareRoleLabel: 'نقش',
+        shareAction: 'اعطای دسترسی',
+        shareEmptyLabel: 'هنوز کسی دسترسی ندارد.',
+        revokeAccessAction: 'لغو دسترسی',
+        ownerLabel: 'مالک',
         spacesSubtitle: 'مدیریت و جابه‌جایی بین فضاها',
         deleteSpaceTitle: 'حذف فضا',
         spaceNameLabel: 'نام فضا',
@@ -1306,6 +1427,7 @@ export const translations: Record<Language, TranslationKeys> = {
         reduceMotionLabel: 'کاهش انیمیشن',
         shortcutsLabel: 'میانبرهای صفحه‌کلید',
         shortcutSearch: 'فوکوس روی جستجو',
+        shortcutGlobalSearch: 'جستجو در همه فضاها',
         shortcutAddNode: 'افزودن فرزند (ریشه، اگر چیزی انتخاب نشده باشد)',
         shortcutEdit: 'ویرایش گره انتخاب‌شده',
         shortcutLink: 'اتصال گره انتخاب‌شده',

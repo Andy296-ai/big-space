@@ -4,9 +4,19 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
+/**
+ * @property string|null $role Роль текущего пользователя в этом пространстве
+ *                             (owner/editor/viewer) — не колонка, проставляется контроллером под
+ *                             конкретного пользователя перед отдачей на фронт (см. Space::roleFor()).
+ * @property string|null $owner_name Имя владельца — проставляется рядом с
+ *                                   $role только для расшаренных пространств в списках.
+ * @property-read SpaceCollaboratorPivot|null $pivot Присутствует только у
+ *     результатов User::sharedSpaces() — это pivot-строка из space_collaborators.
+ */
 class Space extends Model
 {
     /** Строгое дерево: у узла не больше одного родителя, циклы запрещены. */
@@ -74,6 +84,51 @@ class Space extends Model
     public function linkedNode(): HasOne
     {
         return $this->hasOne(Node::class, 'linked_space_id');
+    }
+
+    /**
+     * Пользователи, которым владелец расшарил пространство — с ролью в pivot.
+     *
+     * @return BelongsToMany<User, $this, SpaceCollaboratorPivot>
+     */
+    public function collaborators(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'space_collaborators')
+            ->using(SpaceCollaboratorPivot::class)
+            ->withPivot('role')
+            ->withTimestamps();
+    }
+
+    /** Может смотреть: владелец, root или любой участник (viewer/editor). */
+    public function isAccessibleBy(User $user): bool
+    {
+        return $user->is_root
+            || $this->user_id === $user->id
+            || $this->collaborators()->where('user_id', $user->id)->exists();
+    }
+
+    /**
+     * Роль пользователя в этом пространстве для фронтенда (кнопки
+     * скрываются по ней) — root везде "owner", у него полные права
+     * независимо от того, кому пространство принадлежит на самом деле.
+     */
+    public function roleFor(User $user): ?string
+    {
+        if ($user->is_root || $this->user_id === $user->id) {
+            return 'owner';
+        }
+
+        $pivot = $this->collaborators()->where('user_id', $user->id)->first()?->pivot;
+
+        return $pivot?->role;
+    }
+
+    /** Может менять граф: владелец, root или участник с ролью editor. */
+    public function isEditableBy(User $user): bool
+    {
+        return $user->is_root
+            || $this->user_id === $user->id
+            || $this->collaborators()->where('user_id', $user->id)->where('role', SpaceCollaborator::ROLE_EDITOR)->exists();
     }
 
     /** В дереве второй родитель запрещён. */

@@ -20,14 +20,26 @@ class SpaceController extends Controller
     /** Метка формата: по ней импорт отличает свой файл от чужого. */
     public const EXPORT_FORMAT = 'infinite-space/v1';
 
-    /** Свои пространства пользователя — чужие, включая Admin, здесь не видны. */
+    /** Свои пространства плюс те, что расшарили пользователю — чужое без шеринга (и Admin) сюда не попадает. */
     public function index(Request $request): JsonResponse
     {
-        return response()->json(
-            Space::withCount(['nodes', 'edges'])
-                ->where('user_id', $request->user()->id)
-                ->get()
-        );
+        $user = $request->user();
+
+        $owned = Space::withCount(['nodes', 'edges'])
+            ->where('user_id', $user->id)
+            ->get()
+            ->each(fn (Space $space) => $space->role = 'owner');
+
+        $shared = $user->sharedSpaces()
+            ->withCount(['nodes', 'edges'])
+            ->with('user:id,name')
+            ->get()
+            ->each(function (Space $space) {
+                $space->role = $space->pivot->role;
+                $space->owner_name = $space->user->name;
+            });
+
+        return response()->json($owned->concat($shared)->values());
     }
 
     public function store(Request $request, SpaceProvisioner $provisioner): JsonResponse

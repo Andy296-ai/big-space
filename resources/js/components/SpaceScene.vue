@@ -60,6 +60,19 @@ export interface CameraState {
     bounds: { minX: number; maxX: number; minY: number; maxY: number };
 }
 
+/** Участник, у которого сейчас открыто это же пространство. */
+export interface PresenceUser {
+    id: number;
+    name: string;
+}
+
+/** Живой курсор другого участника — координаты в мировых, не экранных. */
+export interface RemoteCursor extends PresenceUser {
+    x: number;
+    y: number;
+    updatedAt: number;
+}
+
 const props = defineProps<{
     nodes: NodeData[];
     edges: EdgeData[];
@@ -67,6 +80,8 @@ const props = defineProps<{
     hoveredNodeId: number | null;
     filteredNodeIds: Set<number> | null;
     settings: AppSettings;
+    canEdit: boolean;
+    remoteCursors: RemoteCursor[];
 }>();
 
 const emit = defineEmits<{
@@ -77,6 +92,7 @@ const emit = defineEmits<{
         payload: { id: number; pos_x: number; pos_y: number; pos_z: number },
     ): void;
     (e: 'update-camera', payload: CameraState): void;
+    (e: 'cursor-move', payload: { x: number; y: number }): void;
 }>();
 
 const containerRef = ref<HTMLDivElement | null>(null);
@@ -568,6 +584,47 @@ function draw() {
     });
 
     props.nodes.forEach((node) => drawNode(ctx, node));
+    drawRemoteCursors(ctx);
+}
+
+/** Живые курсоры других участников — точка + именная плашка поверх сцены. */
+function drawRemoteCursors(ctx: CanvasRenderingContext2D) {
+    props.remoteCursors.forEach((cursor) => {
+        const screen = worldToScreen(cursor.x, cursor.y);
+
+        if (
+            screen.x < -40 ||
+            screen.x > viewW + 40 ||
+            screen.y < -40 ||
+            screen.y > viewH + 40
+        ) {
+            return;
+        }
+
+        const color = PALETTE[Math.abs(cursor.id) % PALETTE.length];
+
+        ctx.beginPath();
+        ctx.arc(screen.x, screen.y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = 'rgba(15, 23, 42, 0.8)';
+        ctx.stroke();
+
+        ctx.font = '600 11px sans-serif';
+        const textWidth = ctx.measureText(cursor.name).width;
+        const tagX = screen.x + 9;
+        const tagY = screen.y - 9;
+
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.roundRect(tagX, tagY - 8, textWidth + 10, 18, 6);
+        ctx.fill();
+
+        ctx.fillStyle = '#0f172a';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(cursor.name, tagX + 5, tagY + 1);
+    });
 }
 
 function reportCamera() {
@@ -626,8 +683,13 @@ function onPointerDown(event: PointerEvent) {
 
     if (node) {
         emit('select-node', node);
-        draggedNodeId = node.id;
-        dragOffset = { x: world.x - node.pos_x, y: world.y - node.pos_y };
+
+        // Viewer видит и выбирает узлы, но таскать их по холсту не может —
+        // сервер такое перемещение всё равно отклонит (can:edit,space).
+        if (props.canEdit) {
+            draggedNodeId = node.id;
+            dragOffset = { x: world.x - node.pos_x, y: world.y - node.pos_y };
+        }
     } else {
         emit('select-node', null);
         isPanning = true;
@@ -644,6 +706,12 @@ function onPointerMove(event: PointerEvent) {
         return;
     }
 
+    const world = screenToWorld(
+        event.clientX - rect.left,
+        event.clientY - rect.top,
+    );
+    emit('cursor-move', world);
+
     if (isPanning) {
         cameraTarget.x -= (event.clientX - pointerStart.x) / camera.scale;
         cameraTarget.y += (event.clientY - pointerStart.y) / camera.scale;
@@ -651,11 +719,6 @@ function onPointerMove(event: PointerEvent) {
 
         return;
     }
-
-    const world = screenToWorld(
-        event.clientX - rect.left,
-        event.clientY - rect.top,
-    );
 
     if (draggedNodeId !== null) {
         const node = props.nodes.find((n) => n.id === draggedNodeId);
@@ -771,6 +834,7 @@ watch(
         props.hoveredNodeId,
         props.filteredNodeIds,
         props.settings,
+        props.remoteCursors,
     ],
     () => {
         needsRedraw = true;

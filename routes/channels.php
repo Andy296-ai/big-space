@@ -8,9 +8,25 @@ Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
 
-/** Тот же критерий доступа, что и у REST-эндпоинтов пространства (см. SpacePolicy). */
+/** Тот же критерий доступа, что и у REST-эндпоинтов пространства (см. SpacePolicy::access). */
 Broadcast::channel('space.{spaceId}', function (User $user, int $spaceId) {
     $space = Space::find($spaceId);
 
-    return $space !== null && ($user->is_root || $space->user_id === $user->id);
+    return $space !== null && $space->isAccessibleBy($user);
+});
+
+/**
+ * Presence-канал: кто сейчас смотрит пространство. Данные, которые здесь
+ * возвращаются, долетают до других участников в событии "here"/"joining".
+ *
+ * @return array{id: int, name: string}|false
+ */
+Broadcast::channel('space.{spaceId}.presence', function (User $user, int $spaceId) {
+    $space = Space::find($spaceId);
+
+    if ($space === null || ! $space->isAccessibleBy($user)) {
+        return false;
+    }
+
+    return ['id' => $user->id, 'name' => $user->name];
 });

@@ -6,11 +6,14 @@ import {
     Plus,
     Trash2,
     Upload,
+    UserPlus,
     X,
 } from 'lucide-vue-next';
 import { ref } from 'vue';
 import { useT } from '../lib/i18n';
 import type { SpaceStructure } from '../types/settings';
+
+export type SpaceRole = 'owner' | 'editor' | 'viewer';
 
 export interface SpaceItem {
     id: number;
@@ -19,6 +22,8 @@ export interface SpaceItem {
     description: string;
     structure: SpaceStructure;
     is_admin: boolean;
+    role: SpaceRole;
+    owner_name?: string;
     nodes_count?: number;
     edges_count?: number;
 }
@@ -64,6 +69,7 @@ const emit = defineEmits<{
     (e: 'create-space', payload: { name: string; description: string }): void;
     (e: 'delete-space', spaceId: number): void;
     (e: 'import-space', payload: unknown): void;
+    (e: 'open-share', space: SpaceItem): void;
 }>();
 
 const isCreating = ref(false);
@@ -142,6 +148,15 @@ function handleCreate() {
                                 class="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-amber-400 uppercase"
                                 >{{ t.adminSpaceBadge }}</span
                             >
+                            <span
+                                v-else-if="s.role !== 'owner'"
+                                class="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-emerald-400 uppercase"
+                                >{{
+                                    s.role === 'editor'
+                                        ? t.roleEditorBadge
+                                        : t.roleViewerBadge
+                                }}</span
+                            >
                             <CheckCircle2
                                 v-if="s.id === currentSpaceId"
                                 class="h-4 w-4 shrink-0 text-blue-400"
@@ -156,10 +171,22 @@ function handleCreate() {
                         <div class="mt-1 text-[10px] text-slate-500">
                             {{ s.nodes_count ?? 0 }} {{ t.nodes }} •
                             {{ s.edges_count ?? 0 }} {{ t.edges }}
+                            <template v-if="s.role !== 'owner' && s.owner_name">
+                                • {{ t.sharedByPrefix }} {{ s.owner_name }}
+                            </template>
                         </div>
                     </div>
 
                     <div class="flex shrink-0 items-center gap-1">
+                        <button
+                            v-if="s.role === 'owner' && !s.is_admin"
+                            @click.stop="emit('open-share', s)"
+                            class="rounded-xl p-2 text-slate-500 transition-colors hover:bg-slate-700/40 hover:text-emerald-300"
+                            :title="t.shareSpaceAction"
+                        >
+                            <UserPlus class="h-4 w-4" />
+                        </button>
+
                         <button
                             @click.stop="exportSpace(s.id)"
                             class="rounded-xl p-2 text-slate-500 transition-colors hover:bg-slate-700/40 hover:text-blue-300"
@@ -169,7 +196,11 @@ function handleCreate() {
                         </button>
 
                         <button
-                            v-if="spaces.length > 1 && !s.is_admin"
+                            v-if="
+                                s.role === 'owner' &&
+                                spaces.length > 1 &&
+                                !s.is_admin
+                            "
                             @click.stop="emit('delete-space', s.id)"
                             class="rounded-xl p-2 text-slate-500 transition-colors hover:bg-rose-950/40 hover:text-rose-400"
                             :title="t.deleteSpaceTitle"
