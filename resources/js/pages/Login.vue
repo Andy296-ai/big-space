@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
-import { LockKeyhole, Sparkles } from 'lucide-vue-next';
+import { LockKeyhole } from 'lucide-vue-next';
 import { computed, onMounted, ref } from 'vue';
+import NodusMark from '../components/NodusMark.vue';
 import {
     applyTheme,
     loadSettings,
@@ -96,7 +97,7 @@ onMounted(() => applyTheme(settings.value));
                 <div
                     class="rounded-xl border border-blue-500/30 bg-blue-600/20 p-2 text-blue-400"
                 >
-                    <Sparkles class="h-5 w-5" />
+                    <NodusMark class="h-5 w-5" />
                 </div>
                 <div class="min-w-0">
                     <h1 class="text-lg leading-tight font-bold">
