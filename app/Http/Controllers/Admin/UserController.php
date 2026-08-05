@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Events\SpaceUpdated;
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Models\Node;
 use App\Models\Space;
 use App\Models\User;
@@ -72,6 +74,14 @@ class UserController extends Controller
 
         [$user, $node] = $result;
 
+        ActivityLog::record(
+            $request->user(),
+            ActivityLog::ACTION_USER_CREATED,
+            'user',
+            $user->id,
+            ['name' => $validated['name'], 'username' => $user->name, 'email' => $user->email],
+        );
+
         return response()->json(['user' => $user, 'node' => $node], 201);
     }
 
@@ -86,6 +96,14 @@ class UserController extends Controller
 
         $user->update(['password' => Hash::make($validated['password'])]);
 
+        ActivityLog::record(
+            $request->user(),
+            ActivityLog::ACTION_PASSWORD_RESET,
+            'user',
+            $user->id,
+            ['name' => $user->name, 'email' => $user->email],
+        );
+
         return response()->json(['message' => 'Password updated successfully']);
     }
 
@@ -95,14 +113,29 @@ class UserController extends Controller
         abort_unless($request->user()->is_root, 403);
         abort_if($user->is_root, 403, 'The root user cannot be deleted.');
 
+        $adminSpace = self::adminSpace();
         $node = $user->linkedNode()->first();
 
         if ($node !== null) {
-            $deletionIds = $graphRepo->computeDeletionSetForSpace(self::adminSpace(), [$node->id]);
+            $deletionIds = $graphRepo->computeDeletionSetForSpace($adminSpace, [$node->id]);
             Node::whereIn('id', $deletionIds)->delete();
+            // Query-builder delete() не будит модельные события — сигналим о живом обновлении сами.
+            SpaceUpdated::dispatch($adminSpace->id);
         }
 
+        $userId = $user->id;
+        $userName = $user->name;
+        $userEmail = $user->email;
+
         $user->delete();
+
+        ActivityLog::record(
+            $request->user(),
+            ActivityLog::ACTION_USER_DELETED,
+            'user',
+            $userId,
+            ['name' => $userName, 'email' => $userEmail],
+        );
 
         return response()->json(['message' => 'User deleted successfully']);
     }

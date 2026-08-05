@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Events\SpaceUpdated;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Storage;
@@ -100,5 +101,9 @@ class NodeAttachment extends Model
                 Storage::disk(self::DISK)->delete($attachment->path);
             }
         });
+
+        static::created(fn (self $a) => SpaceUpdated::dispatch($a->node->space_id));
+        static::updated(fn (self $a) => SpaceUpdated::dispatch($a->node->space_id));
+        static::deleted(fn (self $a) => SpaceUpdated::dispatch($a->node->space_id));
     }
 }

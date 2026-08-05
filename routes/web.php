@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\ActivityLogController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\AttachmentController;
 use App\Http\Controllers\AuthController;
@@ -27,6 +28,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/admin/users', [UserController::class, 'store']);
         Route::put('/admin/users/{user}/password', [UserController::class, 'updatePassword']);
         Route::delete('/admin/users/{user}', [UserController::class, 'destroy']);
+        Route::get('/admin/activity-log', [ActivityLogController::class, 'index']);
 
         // Всё, что привязано к конкретному пространству: владелец или root.
         Route::middleware('can:access,space')->prefix('spaces/{space}')->group(function () {

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Events\SpaceUpdated;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -123,5 +124,13 @@ class Node extends Model
     public function children(): BelongsToMany
     {
         return $this->belongsToMany(Node::class, 'edges', 'parent_id', 'child_id');
+    }
+
+    /** Живое обновление: любое изменение узла будит всех, кто сейчас смотрит на это пространство. */
+    protected static function booted(): void
+    {
+        static::created(fn (self $node) => SpaceUpdated::dispatch($node->space_id));
+        static::updated(fn (self $node) => SpaceUpdated::dispatch($node->space_id));
+        static::deleted(fn (self $node) => SpaceUpdated::dispatch($node->space_id));
     }
 }

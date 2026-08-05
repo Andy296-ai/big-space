@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Events\SpaceUpdated;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -29,5 +30,11 @@ class Edge extends Model
     public function child(): BelongsTo
     {
         return $this->belongsTo(Node::class, 'child_id');
+    }
+
+    protected static function booted(): void
+    {
+        static::created(fn (self $edge) => SpaceUpdated::dispatch($edge->space_id));
+        static::deleted(fn (self $edge) => SpaceUpdated::dispatch($edge->space_id));
     }
 }

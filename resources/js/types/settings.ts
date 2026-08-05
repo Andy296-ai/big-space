@@ -208,6 +208,15 @@ export type TranslationKeys = {
     userEmailLabel: string;
     createUserAction: string;
     resetPasswordAction: string;
+    activityLogAction: string;
+    activityLogTitle: string;
+    activityLogDesc: string;
+    activityLogEmpty: string;
+    activityLogSystemActor: string;
+    actionUserCreated: string;
+    actionUserDeleted: string;
+    actionPasswordReset: string;
+    actionSpaceDeleted: string;
     resetPasswordTitle: string;
     newPasswordLabel: string;
     confirmPasswordLabel: string;
@@ -424,6 +433,15 @@ export const translations: Record<Language, TranslationKeys> = {
         userEmailLabel: 'Email',
         createUserAction: 'Create User',
         resetPasswordAction: 'Reset Password',
+        activityLogAction: 'Activity Log',
+        activityLogTitle: 'Activity Log',
+        activityLogDesc: 'Recent administrator actions',
+        activityLogEmpty: 'No activity yet.',
+        activityLogSystemActor: 'System',
+        actionUserCreated: 'created user {name}',
+        actionUserDeleted: 'deleted user {name}',
+        actionPasswordReset: 'reset the password for {name}',
+        actionSpaceDeleted: 'deleted space {name}',
         resetPasswordTitle: 'Reset password',
         newPasswordLabel: 'New password (min. 8 characters)',
         confirmPasswordLabel: 'Confirm password',
@@ -650,6 +668,15 @@ export const translations: Record<Language, TranslationKeys> = {
         userEmailLabel: 'Email',
         createUserAction: 'Создать пользователя',
         resetPasswordAction: 'Сбросить пароль',
+        activityLogAction: 'Журнал действий',
+        activityLogTitle: 'Журнал действий',
+        activityLogDesc: 'Последние действия администратора',
+        activityLogEmpty: 'Пока пусто.',
+        activityLogSystemActor: 'Система',
+        actionUserCreated: 'создал пользователя {name}',
+        actionUserDeleted: 'удалил пользователя {name}',
+        actionPasswordReset: 'сбросил пароль пользователю {name}',
+        actionSpaceDeleted: 'удалил пространство {name}',
         resetPasswordTitle: 'Сброс пароля',
         newPasswordLabel: 'Новый пароль (минимум 8 символов)',
         confirmPasswordLabel: 'Повторите пароль',
@@ -877,6 +904,15 @@ export const translations: Record<Language, TranslationKeys> = {
         userEmailLabel: 'Email',
         createUserAction: 'Сохтани корбар',
         resetPasswordAction: 'Бознишонии рамз',
+        activityLogAction: 'Рӯзномаи амалҳо',
+        activityLogTitle: 'Рӯзномаи амалҳо',
+        activityLogDesc: 'Амалҳои охирини маъмур',
+        activityLogEmpty: 'Ҳанӯз чизе нест.',
+        activityLogSystemActor: 'Система',
+        actionUserCreated: 'корбар {name}-ро сохт',
+        actionUserDeleted: 'корбар {name}-ро нест кард',
+        actionPasswordReset: 'рамзи корбари {name}-ро бознишон кард',
+        actionSpaceDeleted: 'фазои {name}-ро нест кард',
         resetPasswordTitle: 'Бознишонии рамз',
         newPasswordLabel: 'Рамзи нав (на кам аз 8 аломат)',
         confirmPasswordLabel: 'Рамзро такрор кунед',
@@ -1104,6 +1140,15 @@ export const translations: Record<Language, TranslationKeys> = {
         userEmailLabel: 'ایمیل',
         createUserAction: 'ایجاد کاربر',
         resetPasswordAction: 'بازنشانی رمز عبور',
+        activityLogAction: 'گزارش فعالیت',
+        activityLogTitle: 'گزارش فعالیت',
+        activityLogDesc: 'اقدامات اخیر مدیر',
+        activityLogEmpty: 'هنوز فعالیتی ثبت نشده.',
+        activityLogSystemActor: 'سیستم',
+        actionUserCreated: 'کاربر {name} را ایجاد کرد',
+        actionUserDeleted: 'کاربر {name} را حذف کرد',
+        actionPasswordReset: 'رمز عبور {name} را بازنشانی کرد',
+        actionSpaceDeleted: 'فضای {name} را حذف کرد',
         resetPasswordTitle: 'بازنشانی رمز عبور',
         newPasswordLabel: 'رمز عبور جدید (حداقل ۸ نویسه)',
         confirmPasswordLabel: 'تکرار رمز عبور',

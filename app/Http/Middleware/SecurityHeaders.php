@@ -48,7 +48,7 @@ class SecurityHeaders
             "'sha256-o9wGWu2JerZ/3zHqAg2OdAfwNt3JRjOntlQBuBKK6hA='",
             $devServer,
         ]);
-        $connectSrc = array_filter(["'self'", $devServer, $devSocket]);
+        $connectSrc = array_filter(["'self'", $devServer, $devSocket, $this->reverbOrigin()]);
 
         $directives = [
             "default-src 'self'",
@@ -65,6 +65,21 @@ class SecurityHeaders
         ];
 
         return implode('; ', $directives);
+    }
+
+    /** Адрес Reverb для живых обновлений графа (см. resources/js/lib/echo.ts) — ws/wss в зависимости от схемы. */
+    private function reverbOrigin(): ?string
+    {
+        $host = config('broadcasting.connections.reverb.options.host');
+
+        if (! $host) {
+            return null;
+        }
+
+        $port = config('broadcasting.connections.reverb.options.port');
+        $scheme = config('broadcasting.connections.reverb.options.useTLS') ? 'wss' : 'ws';
+
+        return "{$scheme}://{$host}:{$port}";
     }
 
     /** Адрес dev-сервера Vite (файл public/hot), пока он поднят — иначе null. */

@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\SpaceUpdated;
+use App\Models\ActivityLog;
 use App\Models\Edge;
 use App\Models\Node;
 use App\Models\NodeAttachment;
 use App\Models\Space;
+use App\Models\User;
 use App\Services\GraphRepository;
 use App\Services\LayoutEngine;
 use App\Services\SpaceProvisioner;
@@ -209,6 +212,9 @@ class GraphController extends Controller
             ]);
         }
 
+        // Query-builder update() не будит модельные события — сигналим о живом обновлении сами.
+        SpaceUpdated::dispatch($space->id);
+
         return response()->json(['message' => 'Node positions updated successfully']);
     }
 
@@ -340,6 +346,7 @@ class GraphController extends Controller
             ->delete();
 
         $this->graphRepo->updateTreeRootIds($space->id);
+        SpaceUpdated::dispatch($space->id);
 
         return response()->json(['message' => 'Link removed successfully']);
     }
@@ -375,15 +382,48 @@ class GraphController extends Controller
 
         $deletionIds = $this->graphRepo->computeDeletionSetForSpace($space, $requestedIds);
 
-        $nodesBackup = Node::whereIn('id', $deletionIds)->get();
-        $edgesBackup = Edge::where('space_id', $space->id)
-            ->where(function ($query) use ($deletionIds) {
-                $query->whereIn('parent_id', $deletionIds)
-                    ->orWhereIn('child_id', $deletionIds);
-            })
+        // Некоторые из этих узлов в Admin-пространстве — зеркала реальных
+        // пользователей/пространств (см. SpaceProvisioner). Удаление узла
+        // отсюда должно унести с собой и то, что он представляет — иначе
+        // запись осталась бы висеть без узла, который ею управляет.
+        $deletionNodes = Node::whereIn('id', $deletionIds)->get(['id', 'linked_user_id', 'linked_space_id']);
+        $linkedUsers = User::whereIn('id', $deletionNodes->pluck('linked_user_id')->filter()->unique())->get();
+
+        if ($linkedUsers->contains('is_root', true)) {
+            return response()->json(['error' => 'The root user cannot be deleted.'], 422);
+        }
+
+        // Пространства, чей владелец удаляется этим же запросом, не трогаем —
+        // они просто останутся бесхозными, как и при прямом удалении
+        // пользователя (см. Admin\UserController::destroy). «По-настоящему»
+        // удаляем только те, чей узел стёрли отдельно от владельца.
+        $linkedSpaceIds = $deletionNodes->pluck('linked_space_id')->filter()->unique();
+        $linkedSpaces = Space::whereIn('id', $linkedSpaceIds)
+            ->whereNotIn('user_id', $linkedUsers->pluck('id'))
             ->get();
 
-        DB::transaction(function () use ($space, $deletionIds) {
+        foreach ($linkedSpaces as $linkedSpace) {
+            if (Space::where('user_id', $linkedSpace->user_id)->count() <= 1) {
+                return response()->json(['error' => "Cannot delete node: \"{$linkedSpace->name}\" is its owner's only space."], 422);
+            }
+        }
+
+        [$nodesBackup, $edgesBackup] = DB::transaction(function () use ($space, $deletionIds, $linkedSpaces, $linkedUsers) {
+            // Сначала удаляем то, что узлы представляют — благодаря
+            // nullOnDelete() на linked_space_id/linked_user_id это обнулит
+            // ссылки на узлах ещё до того, как мы их сохраним для отмены.
+            // Иначе после restore узел ожил бы со ссылкой на уже несуществующую запись.
+            Space::whereIn('id', $linkedSpaces->pluck('id'))->delete();
+            User::whereIn('id', $linkedUsers->pluck('id'))->delete();
+
+            $nodesBackup = Node::whereIn('id', $deletionIds)->get();
+            $edgesBackup = Edge::where('space_id', $space->id)
+                ->where(function ($query) use ($deletionIds) {
+                    $query->whereIn('parent_id', $deletionIds)
+                        ->orWhereIn('child_id', $deletionIds);
+                })
+                ->get();
+
             Edge::where('space_id', $space->id)
                 ->where(function ($query) use ($deletionIds) {
                     $query->whereIn('parent_id', $deletionIds)
@@ -392,9 +432,32 @@ class GraphController extends Controller
                 ->delete();
 
             Node::where('space_id', $space->id)->whereIn('id', $deletionIds)->delete();
+
+            return [$nodesBackup, $edgesBackup];
         });
 
         $this->graphRepo->updateTreeRootIds($space->id);
+        SpaceUpdated::dispatch($space->id);
+
+        foreach ($linkedSpaces as $linkedSpace) {
+            ActivityLog::record(
+                $request->user(),
+                ActivityLog::ACTION_SPACE_DELETED,
+                'space',
+                $linkedSpace->id,
+                ['name' => $linkedSpace->name, 'is_own' => $linkedSpace->user_id === $request->user()->id],
+            );
+        }
+
+        foreach ($linkedUsers as $linkedUser) {
+            ActivityLog::record(
+                $request->user(),
+                ActivityLog::ACTION_USER_DELETED,
+                'user',
+                $linkedUser->id,
+                ['name' => $linkedUser->name, 'email' => $linkedUser->email],
+            );
+        }
 
         // Снимок остаётся на сервере, клиенту достаётся только одноразовый токен.
         // Раньше тело restore приходило от клиента, то есть через него можно было
@@ -461,6 +524,7 @@ class GraphController extends Controller
         });
 
         $this->graphRepo->updateTreeRootIds($space->id);
+        SpaceUpdated::dispatch($space->id);
 
         return response()->json(['message' => 'Nodes and edges restored successfully']);
     }

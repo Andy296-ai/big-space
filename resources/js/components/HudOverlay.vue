@@ -7,13 +7,14 @@ import {
     RotateCcw,
     Layers,
     LogOut,
-    Sparkles,
+    ScrollText,
     Wand2,
     Settings,
 } from 'lucide-vue-next';
 import { ref, computed } from 'vue';
 import { translations } from '../types/settings';
 import type { AppSettings } from '../types/settings';
+import NodusMark from './NodusMark.vue';
 import type { NodeData } from './SpaceScene.vue';
 
 const props = defineProps<{
@@ -22,12 +23,14 @@ const props = defineProps<{
     edgesCount: number;
     canUndo: boolean;
     settings: AppSettings;
+    isRoot: boolean;
 }>();
 
 const emit = defineEmits<{
     (e: 'open-space-modal'): void;
     (e: 'open-settings-modal'): void;
     (e: 'open-add-root-modal'): void;
+    (e: 'open-activity-log'): void;
     (e: 'focus-node', nodeId: number): void;
     (e: 'undo'): void;
     (e: 'auto-layout'): void;
@@ -123,7 +126,7 @@ defineExpose({ focusSearch });
             <div
                 class="rounded-xl border border-blue-500/30 bg-blue-600/20 p-2 text-blue-400"
             >
-                <Sparkles class="h-5 w-5" />
+                <NodusMark class="h-5 w-5" />
             </div>
             <div>
                 <div
@@ -142,6 +145,14 @@ defineExpose({ focusSearch });
                 </div>
             </div>
             <div class="mx-1 h-6 w-px bg-slate-700" />
+            <button
+                v-if="isRoot"
+                @click="emit('open-activity-log')"
+                class="rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
+                :title="t.activityLogAction"
+            >
+                <ScrollText class="h-4 w-4" />
+            </button>
             <button
                 @click="emit('open-settings-modal')"
                 class="rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"

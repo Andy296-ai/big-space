@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { Head, router } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 
+import ActivityLogModal from '../components/ActivityLogModal.vue';
 import AddNodeModal from '../components/AddNodeModal.vue';
 import type { PendingAttachment } from '../components/AttachmentEditor.vue';
 import CopyNodeModal from '../components/CopyNodeModal.vue';
@@ -23,6 +24,7 @@ import type {
 } from '../components/SpaceScene.vue';
 import SpaceScene from '../components/SpaceScene.vue';
 import { apiFetch } from '../lib/api';
+import { getEcho } from '../lib/echo';
 import { provideSettings } from '../lib/i18n';
 import {
     applyTheme,
@@ -41,6 +43,8 @@ const props = defineProps<{
 const sceneRef = ref<InstanceType<typeof SpaceScene> | null>(null);
 const hudRef = ref<InstanceType<typeof HudOverlay> | null>(null);
 
+const isRoot = computed(() => usePage().props.auth.user.is_root);
+
 const nodes = ref<NodeData[]>([]);
 const edges = ref<EdgeData[]>([]);
 
@@ -58,6 +62,7 @@ const showDeleteModal = ref(false);
 const showResetPasswordModal = ref(false);
 const resetPasswordError = ref<string | null>(null);
 const resetPasswordSaving = ref(false);
+const showActivityLogModal = ref(false);
 const addModalParentNode = ref<NodeData | null>(null);
 
 // Снимок удалённого хранится на сервере — здесь только одноразовый токен на него.
@@ -238,6 +243,35 @@ async function loadGraph() {
 onMounted(() => {
     applyTheme(appSettings.value);
     loadGraph();
+});
+
+// Живые обновления: другой человек/вкладка меняет граф этого пространства —
+// сервер шлёт голый сигнал (без диффа), а мы просто перезапрашиваем граф.
+// Дебаунс — на случай если несколько сигналов прилетят почти одновременно.
+let liveSyncTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleLiveRefresh() {
+    if (liveSyncTimer) {
+        clearTimeout(liveSyncTimer);
+    }
+
+    liveSyncTimer = setTimeout(loadGraph, 250);
+}
+
+const liveChannelName = `space.${props.currentSpace.id}`;
+
+onMounted(() => {
+    getEcho()
+        .private(liveChannelName)
+        .listen('.space.updated', scheduleLiveRefresh);
+});
+
+onUnmounted(() => {
+    getEcho().leave(liveChannelName);
+
+    if (liveSyncTimer) {
+        clearTimeout(liveSyncTimer);
+    }
 });
 
 function handleUpdateSettings(newSettings: AppSettings) {
@@ -444,7 +478,8 @@ const isAnyModalOpen = computed(
         showLinkModal.value ||
         showCopyModal.value ||
         showDeleteModal.value ||
-        showResetPasswordModal.value,
+        showResetPasswordModal.value ||
+        showActivityLogModal.value,
 );
 
 /** Пока фокус в поле ввода, буквенные хоткеи должны просто печататься как текст. */
@@ -476,6 +511,7 @@ function handleGlobalKeydown(event: KeyboardEvent) {
             showCopyModal.value = false;
             showDeleteModal.value = false;
             showResetPasswordModal.value = false;
+            showActivityLogModal.value = false;
         } else if (selectedNode.value) {
             selectedNode.value = null;
         }
@@ -962,8 +998,10 @@ async function handleDeleteSpace(spaceId: number) {
             :edges-count="edges.length"
             :can-undo="!!undoToken"
             :settings="appSettings"
+            :is-root="isRoot"
             @open-space-modal="showSpaceModal = true"
             @open-settings-modal="showSettingsModal = true"
+            @open-activity-log="showActivityLogModal = true"
             @open-add-root-modal="openAddRootModal"
             @focus-node="handleFocusNode"
             @undo="handleUndo"
@@ -1071,6 +1109,11 @@ async function handleDeleteSpace(spaceId: number) {
             :is-saving="resetPasswordSaving"
             @close="showResetPasswordModal = false"
             @submit="handleResetPassword"
+        />
+
+        <ActivityLogModal
+            v-if="showActivityLogModal"
+            @close="showActivityLogModal = false"
         />
 
         <DeleteConfirmModal

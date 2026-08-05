@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Events\SpaceUpdated;
 use App\Models\Edge;
 use App\Models\Node;
 use App\Models\NodeAttachment;
@@ -224,9 +225,16 @@ class GraphRepository
      */
     public function applyDepths(int $spaceId, array $depths): void
     {
+        if (empty($depths)) {
+            return;
+        }
+
         foreach ($depths as $id => $depth) {
             Node::where('space_id', $spaceId)->where('id', $id)->update(['depth' => $depth]);
         }
+
+        // Query-builder update() не будит модельные события — сигналим о живом обновлении сами.
+        SpaceUpdated::dispatch($spaceId);
     }
 
     /**

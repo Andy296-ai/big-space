@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\SpaceUpdated;
+use App\Models\ActivityLog;
 use App\Models\Edge;
 use App\Models\Node;
 use App\Models\NodeAttachment;
@@ -77,6 +79,7 @@ class SpaceController extends Controller
         }
 
         $space->update(['structure' => $validated['structure']]);
+        SpaceUpdated::dispatch($space->id);
 
         return response()->json($space->loadCount(['nodes', 'edges']));
     }
@@ -267,7 +270,7 @@ class SpaceController extends Controller
         return response()->json($space->fresh()->loadCount(['nodes', 'edges']), 201);
     }
 
-    public function destroy(Space $space): JsonResponse
+    public function destroy(Request $request, Space $space, GraphRepository $graphRepo): JsonResponse
     {
         if ($space->is_admin) {
             return response()->json(['error' => 'The Admin space cannot be deleted.'], 422);
@@ -278,7 +281,38 @@ class SpaceController extends Controller
             return response()->json(['error' => 'Cannot delete the only space'], 422);
         }
 
-        $space->delete();
+        $spaceId = $space->id;
+        $spaceName = $space->name;
+        $ownerId = $space->user_id;
+
+        // У пространства может быть узел-зеркало в Admin (см. SpaceProvisioner)
+        // — без этого он остаётся висеть, указывая на уже удалённую запись.
+        $linkedNode = $space->linkedNode()->first();
+
+        DB::transaction(function () use ($space, $linkedNode, $graphRepo) {
+            $space->delete();
+
+            if ($linkedNode !== null) {
+                $deletionIds = $graphRepo->computeDeletionSetForSpace($linkedNode->space, [$linkedNode->id]);
+                Node::whereIn('id', $deletionIds)->delete();
+            }
+        });
+
+        if ($linkedNode !== null) {
+            SpaceUpdated::dispatch($linkedNode->space_id);
+        }
+
+        // Только действия root'а — обычный пользователь, удаляющий своё же
+        // пространство, это не «администрирование», а рутинная работа.
+        if ($request->user()->is_root) {
+            ActivityLog::record(
+                $request->user(),
+                ActivityLog::ACTION_SPACE_DELETED,
+                'space',
+                $spaceId,
+                ['name' => $spaceName, 'is_own' => $ownerId === $request->user()->id],
+            );
+        }
 
         return response()->json(['message' => 'Space deleted successfully']);
     }
