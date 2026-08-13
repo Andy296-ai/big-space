@@ -5,7 +5,11 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\AttachmentController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\GraphController;
+use App\Http\Controllers\NodeCommentController;
+use App\Http\Controllers\NodeTreeSettingsController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\SpaceActivityLogController;
 use App\Http\Controllers\SpaceCollaboratorController;
 use App\Http\Controllers\SpaceController;
 use Illuminate\Support\Facades\Route;
@@ -27,6 +31,12 @@ Route::middleware('auth')->group(function () {
         Route::post('/spaces/import', [SpaceController::class, 'import']);
         Route::get('/search', [SearchController::class, 'index']);
 
+        // Уведомления пользователя — доступ открыт в пространстве, кто-то
+        // ответил на комментарий и т.п. Не привязаны к конкретному пространству.
+        Route::get('/notifications', [NotificationController::class, 'index']);
+        Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
+        Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
+
         // Пользователи — узлы в Admin-пространстве; управляет только root.
         Route::post('/admin/users', [UserController::class, 'store']);
         Route::put('/admin/users/{user}/password', [UserController::class, 'updatePassword']);
@@ -46,6 +56,11 @@ Route::middleware('auth')->group(function () {
             Route::get('/nodes/{node}/deletion-preview', [GraphController::class, 'computeDeletion']);
             Route::get('/nodes/{node}/revisions', [GraphController::class, 'nodeRevisions']);
 
+            // Комментарии — не привязаны к роли editor, viewer тоже может обсуждать.
+            Route::get('/nodes/{node}/comments', [NodeCommentController::class, 'index']);
+            Route::post('/nodes/{node}/comments', [NodeCommentController::class, 'store']);
+            Route::delete('/nodes/{node}/comments/{comment}', [NodeCommentController::class, 'destroy']);
+
             // Меняет граф — нужна роль editor (или владелец/root).
             Route::middleware('can:edit,space')->group(function () {
                 Route::put('/structure', [SpaceController::class, 'updateStructure']);
@@ -56,6 +71,7 @@ Route::middleware('auth')->group(function () {
                 Route::put('/nodes/bulk-move', [GraphController::class, 'bulkMove']);
                 Route::put('/nodes/{node}/move', [GraphController::class, 'move']);
                 Route::put('/nodes/{node}', [GraphController::class, 'update']);
+                Route::put('/nodes/{node}/tree-settings', [NodeTreeSettingsController::class, 'update']);
                 Route::post('/nodes/{node}/logo', [GraphController::class, 'uploadLogo']);
 
                 Route::post('/nodes/{node}/attachments', [AttachmentController::class, 'store']);
@@ -73,6 +89,8 @@ Route::middleware('auth')->group(function () {
             // Удаление пространства и управление шерингом — только владелец/root.
             Route::middleware('can:manage,space')->group(function () {
                 Route::delete('/', [SpaceController::class, 'destroy']);
+
+                Route::get('/activity-log', [SpaceActivityLogController::class, 'index']);
 
                 Route::get('/collaborators', [SpaceCollaboratorController::class, 'index']);
                 Route::post('/collaborators', [SpaceCollaboratorController::class, 'store']);

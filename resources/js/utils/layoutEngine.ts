@@ -11,6 +11,8 @@ export interface LayoutNode {
     depth: number;
     tree_root_id: number | null;
     tags?: string;
+    pos_x?: number;
+    pos_y?: number;
 }
 
 export interface LayoutEdge {
@@ -76,12 +78,61 @@ function toScenePosition(
 }
 
 /**
+ * Корни, у которых сейчас совпадают текущие координаты (типично — только что
+ * созданные, ещё ни разу не перетащенные, все на (0,0)), расставляются рядом
+ * друг с другом, как раньше. Корни с уже различающимися координатами не трогаем —
+ * именно они не обязаны лежать на одной оси X/Y.
+ */
+function resolveRootAnchors(
+    roots: LayoutNode[],
+    direction: LayoutDirection,
+): Map<number, { x: number; y: number }> {
+    const anchors = new Map<number, { x: number; y: number }>();
+    const groups = new Map<string, LayoutNode[]>();
+
+    roots.forEach((root) => {
+        const x = root.pos_x ?? 0;
+        const y = root.pos_y ?? 0;
+        const key = `${Math.round(x)}:${Math.round(y)}`;
+
+        if (!groups.has(key)) {
+            groups.set(key, []);
+        }
+
+        groups.get(key)!.push(root);
+    });
+
+    groups.forEach((group) => {
+        if (group.length === 1) {
+            const r = group[0];
+            anchors.set(r.id, { x: r.pos_x ?? 0, y: r.pos_y ?? 0 });
+
+            return;
+        }
+
+        const base = { x: group[0].pos_x ?? 0, y: group[0].pos_y ?? 0 };
+        let cursor = 0;
+        group.forEach((r) => {
+            const { x, y } = toScenePosition(0, cursor, direction);
+            anchors.set(r.id, { x: base.x + x, y: base.y + y });
+            cursor += 1;
+        });
+    });
+
+    return anchors;
+}
+
+/**
  * Аккуратное дерево: дети выкладываются подряд, родитель центрируется над
  * своей группой, поддеревья не наезжают друг на друга. В отличие от «слоёв»,
  * где узлы одного уровня просто выстраивались в ряд по порядку id.
  *
  * У узла с несколькими родителями рисуется только первая связь — иначе один
  * узел пришлось бы поставить в два места сразу.
+ *
+ * Каждое дерево раскладывается независимо и привязывается к ТЕКУЩИМ
+ * координатам своего корня — так ручная расстановка деревьев (например,
+ * перетаскиванием правой кнопкой) не сбрасывается кнопкой «Авто-организация».
  */
 function layoutHierarchy(
     nodes: LayoutNode[],
@@ -110,60 +161,71 @@ function layoutHierarchy(
         treeChildren.get(e.parent_id)!.push(e.child_id);
     });
 
-    const levelOf = new Map<number, number>();
-    const acrossOf = new Map<number, number>();
-    const visited = new Set<number>();
-    let nextSlot = 0;
-
-    function place(id: number, level: number): number {
-        if (visited.has(id)) {
-            return acrossOf.get(id) ?? 0;
-        }
-
-        visited.add(id);
-        levelOf.set(id, level);
-
-        const kids = treeChildren.get(id) ?? [];
-
-        if (kids.length === 0) {
-            const slot = nextSlot++;
-            acrossOf.set(id, slot);
-
-            return slot;
-        }
-
-        const kidSlots = kids.map((kid) => place(kid, level + 1));
-        const center = (kidSlots[0] + kidSlots[kidSlots.length - 1]) / 2;
-        acrossOf.set(id, center);
-
-        return center;
-    }
-
     const roots = nodes.filter((n) => !primaryParent.has(n.id));
+    const rootAnchors = resolveRootAnchors(roots, direction);
+    const visited = new Set<number>();
 
     roots.forEach((root) => {
+        const levelOf = new Map<number, number>();
+        const acrossOf = new Map<number, number>();
+        let nextSlot = 0;
+
+        function place(id: number, level: number): number {
+            if (acrossOf.has(id)) {
+                return acrossOf.get(id)!;
+            }
+
+            visited.add(id);
+            levelOf.set(id, level);
+
+            const kids = treeChildren.get(id) ?? [];
+
+            if (kids.length === 0) {
+                const slot = nextSlot++;
+                acrossOf.set(id, slot);
+
+                return slot;
+            }
+
+            const kidSlots = kids.map((kid) => place(kid, level + 1));
+            const center = (kidSlots[0] + kidSlots[kidSlots.length - 1]) / 2;
+            acrossOf.set(id, center);
+
+            return center;
+        }
+
         place(root.id, 0);
-        nextSlot += 1; // зазор между отдельными деревьями
+
+        // acrossOf текущего корня — всегда локальный центр его собственного
+        // поддерева (доказывается индукцией по place()), отдельный проход за
+        // min/max не нужен.
+        const rootMiddle = acrossOf.get(root.id) ?? 0;
+        const anchor = rootAnchors.get(root.id)!;
+
+        acrossOf.forEach((across, id) => {
+            const { x, y } = toScenePosition(
+                levelOf.get(id) ?? 0,
+                across - rootMiddle,
+                direction,
+            );
+            positions.set(id, {
+                x: Math.round(x + anchor.x),
+                y: Math.round(y + anchor.y),
+                z: 0,
+            });
+        });
     });
 
-    // Узлы, до которых не добрались (например, замкнутые в цикл).
+    // Узлы, до которых не добрались (например, замкнутые в цикл) — оставляем
+    // на месте, а не выдумываем им позицию на уже несуществующей общей полосе.
     nodes.forEach((n) => {
         if (!visited.has(n.id)) {
-            levelOf.set(n.id, n.depth);
-            acrossOf.set(n.id, nextSlot++);
+            positions.set(n.id, {
+                x: Math.round(n.pos_x ?? 0),
+                y: Math.round(n.pos_y ?? 0),
+                z: 0,
+            });
         }
-    });
-
-    const slots = [...acrossOf.values()];
-    const middle =
-        slots.length > 0 ? (Math.min(...slots) + Math.max(...slots)) / 2 : 0;
-
-    nodes.forEach((n) => {
-        const level = levelOf.get(n.id) ?? 0;
-        const across = (acrossOf.get(n.id) ?? 0) - middle;
-        const { x, y } = toScenePosition(level, across, direction);
-
-        positions.set(n.id, { x: Math.round(x), y: Math.round(y), z: 0 });
     });
 
     return positions;

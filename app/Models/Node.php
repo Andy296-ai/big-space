@@ -22,8 +22,10 @@ class Node extends Model
         'pos_z',
         'depth',
         'color',
+        'default_color',
         'tags',
         'shape',
+        'default_shape',
         'map_lat',
         'map_lon',
         'map_title',
@@ -59,6 +61,12 @@ class Node extends Model
     public function revisions(): HasMany
     {
         return $this->hasMany(NodeRevision::class);
+    }
+
+    /** @return HasMany<NodeComment, $this> */
+    public function comments(): HasMany
+    {
+        return $this->hasMany(NodeComment::class);
     }
 
     /** Карта рисуется только когда точка задана. */

@@ -23,8 +23,21 @@ class ActivityLog extends Model
 
     public const ACTION_SPACE_DELETED = 'space.deleted';
 
+    public const ACTION_NODE_CREATED = 'node.created';
+
+    public const ACTION_NODE_DELETED = 'node.deleted';
+
+    public const ACTION_STRUCTURE_CHANGED = 'structure.changed';
+
+    public const ACTION_COLLABORATOR_ADDED = 'collaborator.added';
+
+    public const ACTION_COLLABORATOR_REMOVED = 'collaborator.removed';
+
+    public const ACTION_COLLABORATOR_ROLE_CHANGED = 'collaborator.role_changed';
+
     protected $fillable = [
         'actor_id',
+        'space_id',
         'action',
         'subject_type',
         'subject_id',
@@ -42,6 +55,12 @@ class ActivityLog extends Model
         return $this->belongsTo(User::class);
     }
 
+    /** @return BelongsTo<Space, $this> */
+    public function space(): BelongsTo
+    {
+        return $this->belongsTo(Space::class);
+    }
+
     /**
      * @param  array<string, mixed>  $meta
      */
@@ -51,9 +70,11 @@ class ActivityLog extends Model
         ?string $subjectType = null,
         ?int $subjectId = null,
         array $meta = [],
+        ?int $spaceId = null,
     ): self {
         return self::create([
             'actor_id' => $actor?->id,
+            'space_id' => $spaceId,
             'action' => $action,
             'subject_type' => $subjectType,
             'subject_id' => $subjectId,

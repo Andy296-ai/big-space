@@ -5,6 +5,8 @@ import {
     ArrowRight,
     ChevronDown,
     ChevronUp,
+    ChevronsDown,
+    ChevronsUp,
     Copy,
     Download,
     Edit3,
@@ -15,7 +17,9 @@ import {
     Layers,
     Link,
     MapPin,
+    MessageSquare,
     Plus,
+    Settings2,
     Tag,
     Trash2,
     X,
@@ -23,28 +27,34 @@ import {
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useT } from '../lib/i18n';
 import AttachmentViewer from './AttachmentViewer.vue';
+import NodeCommentsModal from './NodeCommentsModal.vue';
 import NodeHistoryModal from './NodeHistoryModal.vue';
 import type { AttachmentData, NodeData } from './SpaceScene.vue';
 import SpaceStructureViewer from './SpaceStructureViewer.vue';
+import TreeSettingsModal from './TreeSettingsModal.vue';
 
 const props = defineProps<{
     spaceId: number;
     node: NodeData | null;
-    childrenCount: number;
-    parentsCount: number;
+    parentNodes: NodeData[];
+    childNodes: NodeData[];
     canEdit: boolean;
+    canModerateComments: boolean;
+    currentUserId: number;
 }>();
 
 const t = useT();
 
 const emit = defineEmits<{
     (e: 'close'): void;
+    (e: 'focus-node', nodeId: number): void;
     (e: 'open-add-child'): void;
     (e: 'open-edit'): void;
     (e: 'open-link'): void;
     (e: 'open-copy'): void;
     (e: 'open-reset-password'): void;
     (e: 'node-restored', node: NodeData): void;
+    (e: 'tree-settings-updated', node: NodeData): void;
     (e: 'delete', nodeId: number): void;
 }>();
 
@@ -55,6 +65,8 @@ const FILES_SHOWN = 5;
 const expanded = ref(false);
 const showStructureViewer = ref(false);
 const showHistory = ref(false);
+const showComments = ref(false);
+const showTreeSettings = ref(false);
 
 // При переходе на другой узел список снова сворачивается.
 watch(
@@ -63,6 +75,8 @@ watch(
         expanded.value = false;
         showStructureViewer.value = false;
         showHistory.value = false;
+        showComments.value = false;
+        showTreeSettings.value = false;
     },
 );
 
@@ -278,6 +292,82 @@ onBeforeUnmount(() => destroyMap());
                 >
             </div>
 
+            <!-- Связи: родители/дети, клик переключает панель на них -->
+            <div
+                v-if="parentNodes.length || childNodes.length"
+                class="space-y-2"
+            >
+                <div
+                    v-if="parentNodes.length"
+                    class="rounded-xl border border-slate-700/40 bg-slate-800/50 p-2.5"
+                >
+                    <div
+                        class="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold tracking-wider text-slate-400 uppercase"
+                    >
+                        <ChevronsUp class="h-3 w-3" />
+                        <span
+                            >{{ t.parentsLabel }} ({{
+                                parentNodes.length
+                            }})</span
+                        >
+                    </div>
+                    <div class="flex flex-wrap gap-1.5">
+                        <button
+                            v-for="p in parentNodes"
+                            :key="p.id"
+                            type="button"
+                            @click="emit('focus-node', p.id)"
+                            class="flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900/60 px-2.5 py-1 text-[11px] text-slate-200 transition-colors hover:border-blue-500 hover:text-blue-300"
+                        >
+                            <span
+                                class="h-1.5 w-1.5 shrink-0 rounded-full"
+                                :style="{
+                                    backgroundColor: p.color || '#3b82f6',
+                                }"
+                            />
+                            <span class="max-w-[9rem] truncate">{{
+                                p.title || t.untitledNode
+                            }}</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div
+                    v-if="childNodes.length"
+                    class="rounded-xl border border-slate-700/40 bg-slate-800/50 p-2.5"
+                >
+                    <div
+                        class="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold tracking-wider text-slate-400 uppercase"
+                    >
+                        <ChevronsDown class="h-3 w-3" />
+                        <span
+                            >{{ t.childrenLabel }} ({{
+                                childNodes.length
+                            }})</span
+                        >
+                    </div>
+                    <div class="flex flex-wrap gap-1.5">
+                        <button
+                            v-for="c in childNodes"
+                            :key="c.id"
+                            type="button"
+                            @click="emit('focus-node', c.id)"
+                            class="flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900/60 px-2.5 py-1 text-[11px] text-slate-200 transition-colors hover:border-blue-500 hover:text-blue-300"
+                        >
+                            <span
+                                class="h-1.5 w-1.5 shrink-0 rounded-full"
+                                :style="{
+                                    backgroundColor: c.color || '#3b82f6',
+                                }"
+                            />
+                            <span class="max-w-[9rem] truncate">{{
+                                c.title || t.untitledNode
+                            }}</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Карта: только если у узла задана точка -->
             <div v-if="hasMap">
                 <div
@@ -337,6 +427,27 @@ onBeforeUnmount(() => destroyMap());
             >
                 <History class="h-3.5 w-3.5 text-indigo-400" />
                 <span>{{ t.nodeHistoryAction }}</span>
+            </button>
+
+            <!-- Обсуждение: доступно всем с доступом к пространству, включая viewer -->
+            <button
+                type="button"
+                @click="showComments = true"
+                class="flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/50 px-3 py-2 text-xs font-semibold text-slate-200 transition-colors hover:bg-slate-700"
+            >
+                <MessageSquare class="h-3.5 w-3.5 text-blue-400" />
+                <span>{{ t.commentsAction }}</span>
+            </button>
+
+            <!-- Настройки дерева: только у корневых узлов, и только если можно менять граф -->
+            <button
+                v-if="node.depth === 0 && canEdit"
+                type="button"
+                @click="showTreeSettings = true"
+                class="flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/50 px-3 py-2 text-xs font-semibold text-slate-200 transition-colors hover:bg-slate-700"
+            >
+                <Settings2 class="h-3.5 w-3.5 text-violet-400" />
+                <span>{{ t.treeSettingsAction }}</span>
             </button>
 
             <!-- Файлы и ссылки: только если прикреплены -->
@@ -483,6 +594,28 @@ onBeforeUnmount(() => destroyMap());
             (updated) => {
                 showHistory = false;
                 emit('node-restored', updated);
+            }
+        "
+    />
+
+    <NodeCommentsModal
+        v-if="showComments && node"
+        :space-id="spaceId"
+        :node="node"
+        :current-user-id="currentUserId"
+        :can-moderate="canModerateComments"
+        @close="showComments = false"
+    />
+
+    <TreeSettingsModal
+        v-if="showTreeSettings && node"
+        :space-id="spaceId"
+        :node="node"
+        @close="showTreeSettings = false"
+        @updated="
+            (updated) => {
+                showTreeSettings = false;
+                emit('tree-settings-updated', updated);
             }
         "
     />

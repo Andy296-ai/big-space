@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\NotificationPosted;
+use App\Models\ActivityLog;
 use App\Models\Space;
 use App\Models\SpaceCollaborator;
 use App\Models\User;
+use App\Notifications\SpaceAccessGranted;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -48,6 +51,18 @@ class SpaceCollaboratorController extends Controller
 
         $space->collaborators()->attach($user->id, ['role' => $validated['role']]);
 
+        ActivityLog::record(
+            $request->user(),
+            ActivityLog::ACTION_COLLABORATOR_ADDED,
+            'user',
+            $user->id,
+            ['name' => $user->name, 'role' => $validated['role']],
+            $space->id,
+        );
+
+        $user->notify(new SpaceAccessGranted($space, $validated['role']));
+        NotificationPosted::dispatch($user->id);
+
         return response()->json(
             ['id' => $user->id, 'name' => $user->name, 'email' => $user->email, 'role' => $validated['role']],
             201,
@@ -63,12 +78,30 @@ class SpaceCollaboratorController extends Controller
         $updated = $space->collaborators()->updateExistingPivot($collaborator->id, ['role' => $validated['role']]);
         abort_unless($updated > 0, 404);
 
+        ActivityLog::record(
+            $request->user(),
+            ActivityLog::ACTION_COLLABORATOR_ROLE_CHANGED,
+            'user',
+            $collaborator->id,
+            ['name' => $collaborator->name, 'role' => $validated['role']],
+            $space->id,
+        );
+
         return response()->json(['message' => 'Role updated successfully']);
     }
 
-    public function destroy(Space $space, User $collaborator): JsonResponse
+    public function destroy(Request $request, Space $space, User $collaborator): JsonResponse
     {
         $space->collaborators()->detach($collaborator->id);
+
+        ActivityLog::record(
+            $request->user(),
+            ActivityLog::ACTION_COLLABORATOR_REMOVED,
+            'user',
+            $collaborator->id,
+            ['name' => $collaborator->name],
+            $space->id,
+        );
 
         return response()->json(['message' => 'Access revoked successfully']);
     }

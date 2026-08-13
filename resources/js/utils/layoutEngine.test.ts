@@ -82,4 +82,55 @@ describe('computeLayout', () => {
         expect(root.x).toBeCloseTo(0);
         expect(root.y).toBeCloseTo(0);
     });
+
+    it('hierarchy layout anchors each tree to its own current root position', () => {
+        const twoTrees: LayoutNode[] = [
+            { id: 1, depth: 0, tree_root_id: 1, pos_x: 500, pos_y: 500 },
+            { id: 2, depth: 1, tree_root_id: 1 },
+            { id: 3, depth: 1, tree_root_id: 1 },
+            { id: 10, depth: 0, tree_root_id: 10, pos_x: -300, pos_y: 700 },
+            { id: 11, depth: 1, tree_root_id: 10 },
+        ];
+        const twoTreeEdges: LayoutEdge[] = [
+            { parent_id: 1, child_id: 2 },
+            { parent_id: 1, child_id: 3 },
+            { parent_id: 10, child_id: 11 },
+        ];
+
+        const positions = computeLayout(
+            'hierarchy',
+            twoTrees,
+            twoTreeEdges,
+            'down',
+        );
+
+        expect(positions.get(1)).toEqual({ x: 500, y: 500, z: 0 });
+        expect(positions.get(10)).toEqual({ x: -300, y: 700, z: 0 });
+        expect(positions.get(2)!.y).toBeLessThan(500);
+        expect(positions.get(11)!.y).toBeLessThan(700);
+    });
+
+    it('spreads root trees that share a default anchor instead of stacking them', () => {
+        const stacked: LayoutNode[] = [
+            { id: 1, depth: 0, tree_root_id: 1 }, // pos_x/pos_y absent -> default (0,0)
+            { id: 2, depth: 1, tree_root_id: 1 },
+            { id: 10, depth: 0, tree_root_id: 10 }, // also defaults to (0,0)
+            { id: 11, depth: 1, tree_root_id: 10 },
+        ];
+        const stackedEdges: LayoutEdge[] = [
+            { parent_id: 1, child_id: 2 },
+            { parent_id: 10, child_id: 11 },
+        ];
+
+        const positions = computeLayout(
+            'hierarchy',
+            stacked,
+            stackedEdges,
+            'down',
+        );
+        const root1 = positions.get(1)!;
+        const root10 = positions.get(10)!;
+
+        expect(root1.x === root10.x && root1.y === root10.y).toBe(false);
+    });
 });

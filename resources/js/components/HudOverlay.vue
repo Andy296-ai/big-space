@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { router } from '@inertiajs/vue3';
 import {
+    Activity,
     Search,
     Filter,
     Plus,
@@ -16,6 +17,7 @@ import { ref, computed } from 'vue';
 import { translations } from '../types/settings';
 import type { AppSettings } from '../types/settings';
 import NodusMark from './NodusMark.vue';
+import NotificationBell from './NotificationBell.vue';
 import type { NodeData, PresenceUser } from './SpaceScene.vue';
 
 const props = defineProps<{
@@ -26,6 +28,7 @@ const props = defineProps<{
     settings: AppSettings;
     isRoot: boolean;
     canEdit: boolean;
+    canViewSpaceActivity: boolean;
     presenceUsers: PresenceUser[];
 }>();
 
@@ -34,6 +37,7 @@ const emit = defineEmits<{
     (e: 'open-settings-modal'): void;
     (e: 'open-add-root-modal'): void;
     (e: 'open-activity-log'): void;
+    (e: 'open-space-activity-log'): void;
     (e: 'open-global-search'): void;
     (e: 'focus-node', nodeId: number): void;
     (e: 'undo'): void;
@@ -164,6 +168,15 @@ defineExpose({ focusSearch });
             >
                 <ScrollText class="h-4 w-4" />
             </button>
+            <button
+                v-if="canViewSpaceActivity"
+                @click="emit('open-space-activity-log')"
+                class="rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
+                :title="t.spaceActivityLogAction"
+            >
+                <Activity class="h-4 w-4" />
+            </button>
+            <NotificationBell />
             <button
                 @click="emit('open-settings-modal')"
                 class="rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"

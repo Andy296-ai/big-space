@@ -126,6 +126,15 @@ class GraphController extends Controller
         ]);
         $node->update(['tree_root_id' => $node->id]);
 
+        ActivityLog::record(
+            $request->user(),
+            ActivityLog::ACTION_NODE_CREATED,
+            'node',
+            $node->id,
+            ['title' => $node->title],
+            $space->id,
+        );
+
         return response()->json($node, 201);
     }
 
@@ -145,13 +154,17 @@ class GraphController extends Controller
         $childCount = $parent->childEdges()->count();
         $pos = LayoutEngine::placeChild($parent, $childCount);
 
+        // Дерево может задать свою форму/цвет по умолчанию для новых узлов
+        // (панель настроек дерева) — они на корневом узле, не на родителе.
+        $treeRoot = ($parent->tree_root_id ? Node::find($parent->tree_root_id) : null) ?? $parent;
+
         $child = Node::create([
             'space_id' => $space->id,
             'title' => $validated['title'],
             'description' => $validated['description'] ?? '',
-            'color' => $validated['color'] ?? '',
+            'color' => $validated['color'] ?? $treeRoot->default_color ?? '',
             'tags' => $validated['tags'] ?? '',
-            'shape' => $validated['shape'] ?? 'circle',
+            'shape' => $validated['shape'] ?? $treeRoot->default_shape ?? 'circle',
             'map_lat' => $validated['map_lat'] ?? null,
             'map_lon' => $validated['map_lon'] ?? null,
             'map_title' => $validated['map_title'] ?? null,
@@ -167,6 +180,15 @@ class GraphController extends Controller
             'parent_id' => $parent->id,
             'child_id' => $child->id,
         ]);
+
+        ActivityLog::record(
+            $request->user(),
+            ActivityLog::ACTION_NODE_CREATED,
+            'node',
+            $child->id,
+            ['title' => $child->title, 'parent_title' => $parent->title],
+            $space->id,
+        );
 
         return response()->json([
             'node' => $child,
@@ -393,6 +415,21 @@ class GraphController extends Controller
 
         $this->graphRepo->updateTreeRootIds($space->id);
 
+        $titles = Node::whereIn('id', [$validated['parent_id'], $validated['child_id']])->pluck('title', 'id');
+
+        ActivityLog::record(
+            $request->user(),
+            ActivityLog::ACTION_STRUCTURE_CHANGED,
+            'edge',
+            $edge->id,
+            [
+                'action' => 'linked',
+                'parent_title' => $titles[$validated['parent_id']] ?? null,
+                'child_title' => $titles[$validated['child_id']] ?? null,
+            ],
+            $space->id,
+        );
+
         return response()->json($edge, 201);
     }
 
@@ -403,6 +440,8 @@ class GraphController extends Controller
             'child_id' => 'required|exists:nodes,id',
         ]);
 
+        $titles = Node::whereIn('id', [$validated['parent_id'], $validated['child_id']])->pluck('title', 'id');
+
         Edge::where('space_id', $space->id)
             ->where('parent_id', $validated['parent_id'])
             ->where('child_id', $validated['child_id'])
@@ -410,6 +449,19 @@ class GraphController extends Controller
 
         $this->graphRepo->updateTreeRootIds($space->id);
         SpaceUpdated::dispatch($space->id);
+
+        ActivityLog::record(
+            $request->user(),
+            ActivityLog::ACTION_STRUCTURE_CHANGED,
+            'edge',
+            null,
+            [
+                'action' => 'unlinked',
+                'parent_title' => $titles[$validated['parent_id']] ?? null,
+                'child_title' => $titles[$validated['child_id']] ?? null,
+            ],
+            $space->id,
+        );
 
         return response()->json(['message' => 'Link removed successfully']);
     }
@@ -442,6 +494,10 @@ class GraphController extends Controller
         if (empty($requestedIds)) {
             return response()->json(['error' => 'No matching nodes in this space.'], 422);
         }
+
+        // Для ленты изменений — имена узлов, которые попросили удалить явно
+        // (а не всего каскада, чтобы запись оставалась короткой и читаемой).
+        $requestedTitles = Node::whereIn('id', $requestedIds)->pluck('title')->all();
 
         $deletionIds = $this->graphRepo->computeDeletionSetForSpace($space, $requestedIds);
 
@@ -501,6 +557,15 @@ class GraphController extends Controller
 
         $this->graphRepo->updateTreeRootIds($space->id);
         SpaceUpdated::dispatch($space->id);
+
+        ActivityLog::record(
+            $request->user(),
+            ActivityLog::ACTION_NODE_DELETED,
+            'node',
+            null,
+            ['titles' => $requestedTitles, 'count' => count($deletionIds)],
+            $space->id,
+        );
 
         foreach ($linkedSpaces as $linkedSpace) {
             ActivityLog::record(

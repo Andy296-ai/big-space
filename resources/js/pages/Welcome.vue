@@ -16,6 +16,7 @@ import NodeInfoDialog from '../components/NodeInfoDialog.vue';
 import ResetPasswordModal from '../components/ResetPasswordModal.vue';
 import SettingsPanel from '../components/SettingsPanel.vue';
 import ShareSpaceModal from '../components/ShareSpaceModal.vue';
+import SpaceActivityLogModal from '../components/SpaceActivityLogModal.vue';
 import SpaceChooserModal from '../components/SpaceChooserModal.vue';
 import type { SpaceItem } from '../components/SpaceChooserModal.vue';
 import type {
@@ -54,11 +55,46 @@ const isRoot = computed(() => usePage().props.auth.user.is_root);
 // прячется по этому флагу; сервер сам всё равно проверяет can:edit,space.
 const canEdit = computed(() => props.currentSpace.role !== 'viewer');
 
+// Владелец этого пространства или root — те же права, что даёт can:manage,space
+// на сервере (шеринг, лента изменений, модерация чужих комментариев).
+const isSpaceOwnerOrRoot = computed(
+    () => props.currentSpace.role === 'owner' || isRoot.value,
+);
+
 const nodes = ref<NodeData[]>([]);
 const edges = ref<EdgeData[]>([]);
 
 const selectedNode = ref<NodeData | null>(null);
 const hoveredNode = ref<NodeData | null>(null);
+
+// Блок «Связи» в панели узла: реальные родители/дети, а не просто счётчик.
+const selectedNodeParents = computed<NodeData[]>(() => {
+    if (!selectedNode.value) {
+        return [];
+    }
+
+    const parentIds = new Set(
+        edges.value
+            .filter((e) => e.child_id === selectedNode.value?.id)
+            .map((e) => e.parent_id),
+    );
+
+    return nodes.value.filter((n) => parentIds.has(n.id));
+});
+
+const selectedNodeChildren = computed<NodeData[]>(() => {
+    if (!selectedNode.value) {
+        return [];
+    }
+
+    const childIds = new Set(
+        edges.value
+            .filter((e) => e.parent_id === selectedNode.value?.id)
+            .map((e) => e.child_id),
+    );
+
+    return nodes.value.filter((n) => childIds.has(n.id));
+});
 
 // Modal states
 const showSpaceModal = ref(false);
@@ -72,6 +108,7 @@ const showResetPasswordModal = ref(false);
 const resetPasswordError = ref<string | null>(null);
 const resetPasswordSaving = ref(false);
 const showActivityLogModal = ref(false);
+const showSpaceActivityLogModal = ref(false);
 const showGlobalSearch = ref(false);
 const shareTargetSpace = ref<SpaceItem | null>(null);
 const addModalParentNode = ref<NodeData | null>(null);
@@ -561,6 +598,39 @@ async function handleMoveNode(payload: {
     }
 }
 
+/** Общий helper для авто-организации и перетаскивания поддерева правой кнопкой — оба шлют пачку позиций разом. */
+async function persistBulkPositions(
+    updates: { id: number; pos_x: number; pos_y: number; pos_z: number }[],
+) {
+    if (updates.length === 0) {
+        return;
+    }
+
+    try {
+        await apiFetch(`/api/spaces/${props.currentSpace.id}/nodes/bulk-move`, {
+            method: 'PUT',
+            body: JSON.stringify({ positions: updates }),
+        });
+    } catch (err) {
+        console.error('Failed to bulk save positions:', err);
+    }
+}
+
+async function handleMoveSubtree(
+    updates: { id: number; pos_x: number; pos_y: number; pos_z: number }[],
+) {
+    updates.forEach((u) => {
+        const idx = nodes.value.findIndex((n) => n.id === u.id);
+
+        if (idx !== -1) {
+            nodes.value[idx].pos_x = u.pos_x;
+            nodes.value[idx].pos_y = u.pos_y;
+            nodes.value[idx].pos_z = u.pos_z;
+        }
+    });
+    await persistBulkPositions(updates);
+}
+
 function openAddRootModal() {
     addModalParentNode.value = null;
     showAddModal.value = true;
@@ -586,6 +656,7 @@ const isAnyModalOpen = computed(
         showDeleteModal.value ||
         showResetPasswordModal.value ||
         showActivityLogModal.value ||
+        showSpaceActivityLogModal.value ||
         showGlobalSearch.value ||
         shareTargetSpace.value !== null,
 );
@@ -999,14 +1070,7 @@ async function handleAutoLayout() {
         });
     });
 
-    try {
-        await apiFetch(`/api/spaces/${props.currentSpace.id}/nodes/bulk-move`, {
-            method: 'PUT',
-            body: JSON.stringify({ positions: updatePayload }),
-        });
-    } catch (err) {
-        console.error('Failed to bulk save layout:', err);
-    }
+    await persistBulkPositions(updatePayload);
 
     sceneRef.value?.fitToContent();
 }
@@ -1139,10 +1203,12 @@ async function handleDeleteSpace(spaceId: number) {
             :settings="appSettings"
             :is-root="isRoot"
             :can-edit="canEdit"
+            :can-view-space-activity="isSpaceOwnerOrRoot"
             :presence-users="otherPresenceUsers"
             @open-space-modal="showSpaceModal = true"
             @open-settings-modal="showSettingsModal = true"
             @open-activity-log="showActivityLogModal = true"
+            @open-space-activity-log="showSpaceActivityLogModal = true"
             @open-global-search="showGlobalSearch = true"
             @open-add-root-modal="openAddRootModal"
             @focus-node="handleFocusNode"
@@ -1165,6 +1231,7 @@ async function handleDeleteSpace(spaceId: number) {
             @select-node="handleSelectNode"
             @hover-node="handleHoverNode"
             @move-node="handleMoveNode"
+            @move-subtree="handleMoveSubtree"
             @update-camera="(c) => (cameraState = c)"
             @cursor-move="(pos) => broadcastCursorPosition(pos.x, pos.y)"
         />
@@ -1185,13 +1252,12 @@ async function handleDeleteSpace(spaceId: number) {
             :space-id="currentSpace.id"
             :node="selectedNode"
             :can-edit="canEdit"
-            :children-count="
-                edges.filter((e) => e.parent_id === selectedNode?.id).length
-            "
-            :parents-count="
-                edges.filter((e) => e.child_id === selectedNode?.id).length
-            "
+            :can-moderate-comments="isSpaceOwnerOrRoot"
+            :current-user-id="currentUserId"
+            :parent-nodes="selectedNodeParents"
+            :child-nodes="selectedNodeChildren"
             @close="selectedNode = null"
+            @focus-node="handleFocusNode"
             @open-add-child="openAddChildModal"
             @open-edit="showEditModal = true"
             @open-link="showLinkModal = true"
@@ -1201,6 +1267,7 @@ async function handleDeleteSpace(spaceId: number) {
                 showResetPasswordModal = true;
             "
             @node-restored="handleNodeRestored"
+            @tree-settings-updated="handleNodeRestored"
             @delete="showDeleteModal = true"
         />
 
@@ -1271,6 +1338,12 @@ async function handleDeleteSpace(spaceId: number) {
         <ActivityLogModal
             v-if="showActivityLogModal"
             @close="showActivityLogModal = false"
+        />
+
+        <SpaceActivityLogModal
+            v-if="showSpaceActivityLogModal"
+            :space-id="currentSpace.id"
+            @close="showSpaceActivityLogModal = false"
         />
 
         <GlobalSearchModal

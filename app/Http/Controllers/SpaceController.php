@@ -93,6 +93,15 @@ class SpaceController extends Controller
         $space->update(['structure' => $validated['structure']]);
         SpaceUpdated::dispatch($space->id);
 
+        ActivityLog::record(
+            $request->user(),
+            ActivityLog::ACTION_STRUCTURE_CHANGED,
+            'space',
+            $space->id,
+            ['action' => 'mode_changed', 'structure' => $validated['structure']],
+            $space->id,
+        );
+
         return response()->json($space->loadCount(['nodes', 'edges']));
     }
 

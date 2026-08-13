@@ -217,6 +217,23 @@ export type TranslationKeys = {
     actionUserDeleted: string;
     actionPasswordReset: string;
     actionSpaceDeleted: string;
+    spaceActivityLogAction: string;
+    spaceActivityLogTitle: string;
+    spaceActivityLogDesc: string;
+    spaceFeedNodeCreated: string;
+    spaceFeedNodeDeleted: string;
+    spaceFeedNodeDeletedCascade: string;
+    spaceFeedStructureMode: string;
+    spaceFeedLinked: string;
+    spaceFeedUnlinked: string;
+    spaceFeedCollaboratorAdded: string;
+    spaceFeedCollaboratorRemoved: string;
+    spaceFeedCollaboratorRoleChanged: string;
+    notificationsAction: string;
+    notificationsTitle: string;
+    notificationsEmpty: string;
+    notificationsMarkAllRead: string;
+    notificationAccessGranted: string;
     resetPasswordTitle: string;
     newPasswordLabel: string;
     confirmPasswordLabel: string;
@@ -274,6 +291,8 @@ export type TranslationKeys = {
     editNodeTitle: string;
     saveChanges: string;
     coordinatesLabel: string;
+    parentsLabel: string;
+    childrenLabel: string;
     openInMaps: string;
     mapSectionLabel: string;
     latLabel: string;
@@ -295,6 +314,13 @@ export type TranslationKeys = {
     nodeHistoryEmpty: string;
     restoreVersionAction: string;
     restoredNoticeLabel: string;
+    commentsAction: string;
+    commentsTitle: string;
+    commentsEmpty: string;
+    commentsPlaceholder: string;
+    postCommentAction: string;
+    deleteCommentAction: string;
+    deletedAuthorLabel: string;
     structureEmptyLabel: string;
     shapeSectionLabel: string;
     logoSectionLabel: string;
@@ -304,6 +330,15 @@ export type TranslationKeys = {
     shapeTriangle: string;
     shapeDiamond: string;
     shapeHexagon: string;
+    treeSettingsAction: string;
+    treeSettingsTitle: string;
+    treeSettingsHint: string;
+    defaultShapeLabel: string;
+    defaultColorLabel: string;
+    defaultColorNone: string;
+    saveDefaultsAction: string;
+    applyToAllAction: string;
+    applyToAllHint: string;
     uploadFile: string;
     addLink: string;
     linkUrlPlaceholder: string;
@@ -466,6 +501,25 @@ export const translations: Record<Language, TranslationKeys> = {
         actionUserDeleted: 'deleted user {name}',
         actionPasswordReset: 'reset the password for {name}',
         actionSpaceDeleted: 'deleted space {name}',
+        spaceActivityLogAction: 'Space Activity',
+        spaceActivityLogTitle: 'Space activity',
+        spaceActivityLogDesc: 'Recent changes in this space',
+        spaceFeedNodeCreated: 'created node {title}',
+        spaceFeedNodeDeleted: 'deleted node {titles}',
+        spaceFeedNodeDeletedCascade:
+            'deleted {titles} along with its descendants ({count} nodes total)',
+        spaceFeedStructureMode: 'changed the space structure to {structure}',
+        spaceFeedLinked: 'linked {child} under {parent}',
+        spaceFeedUnlinked: 'unlinked {child} from {parent}',
+        spaceFeedCollaboratorAdded: 'gave {name} {role} access',
+        spaceFeedCollaboratorRemoved: "removed {name}'s access",
+        spaceFeedCollaboratorRoleChanged: "changed {name}'s role to {role}",
+        notificationsAction: 'Notifications',
+        notificationsTitle: 'Notifications',
+        notificationsEmpty: "You're all caught up.",
+        notificationsMarkAllRead: 'Mark all as read',
+        notificationAccessGranted:
+            '{owner} gave you {role} access to "{space}"',
         resetPasswordTitle: 'Reset password',
         newPasswordLabel: 'New password (min. 8 characters)',
         confirmPasswordLabel: 'Confirm password',
@@ -532,6 +586,8 @@ export const translations: Record<Language, TranslationKeys> = {
         editNodeTitle: 'Edit Node',
         saveChanges: 'Save Changes',
         coordinatesLabel: 'Coordinates',
+        parentsLabel: 'Parents',
+        childrenLabel: 'Children',
         openInMaps: 'Open in Maps',
         mapSectionLabel: 'Map point',
         latLabel: 'Latitude',
@@ -554,6 +610,13 @@ export const translations: Record<Language, TranslationKeys> = {
         nodeHistoryEmpty: 'No edits yet.',
         restoreVersionAction: 'Restore this version',
         restoredNoticeLabel: 'Restored',
+        commentsAction: 'Comments',
+        commentsTitle: 'Comments',
+        commentsEmpty: 'No comments yet.',
+        commentsPlaceholder: 'Write a comment...',
+        postCommentAction: 'Post',
+        deleteCommentAction: 'Delete comment',
+        deletedAuthorLabel: 'Deleted user',
         structureEmptyLabel: 'This space is empty.',
         shapeSectionLabel: 'Shape',
         logoSectionLabel: 'Logo',
@@ -563,6 +626,17 @@ export const translations: Record<Language, TranslationKeys> = {
         shapeTriangle: 'Triangle',
         shapeDiamond: 'Diamond',
         shapeHexagon: 'Hexagon',
+        treeSettingsAction: 'Tree settings',
+        treeSettingsTitle: 'Tree settings',
+        treeSettingsHint:
+            'New child nodes added anywhere in this tree will use this shape and color by default.',
+        defaultShapeLabel: 'Default shape',
+        defaultColorLabel: 'Default color',
+        defaultColorNone: 'None',
+        saveDefaultsAction: 'Save defaults',
+        applyToAllAction: 'Apply to all nodes in this tree',
+        applyToAllHint:
+            'Overwrites the shape and color of every existing node in this tree, including the root.',
         uploadFile: 'Upload file',
         addLink: 'Add link',
         linkUrlPlaceholder: 'https://...',
@@ -725,6 +799,26 @@ export const translations: Record<Language, TranslationKeys> = {
         actionUserDeleted: 'удалил пользователя {name}',
         actionPasswordReset: 'сбросил пароль пользователю {name}',
         actionSpaceDeleted: 'удалил пространство {name}',
+        spaceActivityLogAction: 'Лента изменений',
+        spaceActivityLogTitle: 'Изменения пространства',
+        spaceActivityLogDesc: 'Последние изменения в этом пространстве',
+        spaceFeedNodeCreated: 'создал узел {title}',
+        spaceFeedNodeDeleted: 'удалил узел {titles}',
+        spaceFeedNodeDeletedCascade:
+            'удалил {titles} вместе с потомками ({count} узлов всего)',
+        spaceFeedStructureMode:
+            'изменил структуру пространства на «{structure}»',
+        spaceFeedLinked: 'связал «{child}» с «{parent}»',
+        spaceFeedUnlinked: 'разорвал связь «{child}» с «{parent}»',
+        spaceFeedCollaboratorAdded: 'дал «{name}» доступ ({role})',
+        spaceFeedCollaboratorRemoved: 'забрал доступ у «{name}»',
+        spaceFeedCollaboratorRoleChanged: 'изменил роль «{name}» на «{role}»',
+        notificationsAction: 'Уведомления',
+        notificationsTitle: 'Уведомления',
+        notificationsEmpty: 'Новых уведомлений нет.',
+        notificationsMarkAllRead: 'Отметить все прочитанными',
+        notificationAccessGranted:
+            '{owner} открыл(а) вам доступ ({role}) к «{space}»',
         resetPasswordTitle: 'Сброс пароля',
         newPasswordLabel: 'Новый пароль (минимум 8 символов)',
         confirmPasswordLabel: 'Повторите пароль',
@@ -791,6 +885,8 @@ export const translations: Record<Language, TranslationKeys> = {
         editNodeTitle: 'Редактировать узел',
         saveChanges: 'Сохранить',
         coordinatesLabel: 'Координаты',
+        parentsLabel: 'Родители',
+        childrenLabel: 'Дети',
         openInMaps: 'Открыть на карте',
         mapSectionLabel: 'Точка на карте',
         latLabel: 'Широта',
@@ -813,6 +909,13 @@ export const translations: Record<Language, TranslationKeys> = {
         nodeHistoryEmpty: 'Правок пока не было.',
         restoreVersionAction: 'Восстановить эту версию',
         restoredNoticeLabel: 'Восстановлено',
+        commentsAction: 'Комментарии',
+        commentsTitle: 'Комментарии',
+        commentsEmpty: 'Пока нет комментариев.',
+        commentsPlaceholder: 'Написать комментарий...',
+        postCommentAction: 'Отправить',
+        deleteCommentAction: 'Удалить комментарий',
+        deletedAuthorLabel: 'Удалённый пользователь',
         structureEmptyLabel: 'Это пространство пустое.',
         shapeSectionLabel: 'Форма',
         logoSectionLabel: 'Логотип',
@@ -822,6 +925,17 @@ export const translations: Record<Language, TranslationKeys> = {
         shapeTriangle: 'Треугольник',
         shapeDiamond: 'Ромб',
         shapeHexagon: 'Шестиугольник',
+        treeSettingsAction: 'Настройки дерева',
+        treeSettingsTitle: 'Настройки дерева',
+        treeSettingsHint:
+            'Новые дочерние узлы в любом месте этого дерева будут по умолчанию получать эту форму и цвет.',
+        defaultShapeLabel: 'Форма по умолчанию',
+        defaultColorLabel: 'Цвет по умолчанию',
+        defaultColorNone: 'Нет',
+        saveDefaultsAction: 'Сохранить значения по умолчанию',
+        applyToAllAction: 'Применить ко всем узлам дерева',
+        applyToAllHint:
+            'Перезапишет форму и цвет у всех существующих узлов этого дерева, включая корневой.',
         uploadFile: 'Загрузить файл',
         addLink: 'Добавить ссылку',
         linkUrlPlaceholder: 'https://...',
@@ -986,6 +1100,26 @@ export const translations: Record<Language, TranslationKeys> = {
         actionUserDeleted: 'корбар {name}-ро нест кард',
         actionPasswordReset: 'рамзи корбари {name}-ро бознишон кард',
         actionSpaceDeleted: 'фазои {name}-ро нест кард',
+        spaceActivityLogAction: 'Рӯзномаи тағйирот',
+        spaceActivityLogTitle: 'Тағйироти фазо',
+        spaceActivityLogDesc: 'Тағйироти охирин дар ин фазо',
+        spaceFeedNodeCreated: 'гиреҳи {title}-ро сохт',
+        spaceFeedNodeDeleted: 'гиреҳи {titles}-ро нест кард',
+        spaceFeedNodeDeletedCascade:
+            '{titles}-ро ҳамроҳи авлодонаш нест кард ({count} гиреҳ ҳамагӣ)',
+        spaceFeedStructureMode: 'сохтори фазоро ба «{structure}» иваз кард',
+        spaceFeedLinked: '«{child}»-ро бо «{parent}» пайваст кард',
+        spaceFeedUnlinked: 'пайванди «{child}»-ро бо «{parent}» кандааст',
+        spaceFeedCollaboratorAdded: 'ба «{name}» дастрасии {role} дод',
+        spaceFeedCollaboratorRemoved: 'дастрасии «{name}»-ро гирифт',
+        spaceFeedCollaboratorRoleChanged:
+            'нақши «{name}»-ро ба «{role}» иваз кард',
+        notificationsAction: 'Огоҳиномаҳо',
+        notificationsTitle: 'Огоҳиномаҳо',
+        notificationsEmpty: 'Огоҳиномаи нав нест.',
+        notificationsMarkAllRead: 'Ҳамаро хондашуда қайд кардан',
+        notificationAccessGranted:
+            '{owner} ба шумо дастрасии {role} ба «{space}» дод',
         resetPasswordTitle: 'Бознишонии рамз',
         newPasswordLabel: 'Рамзи нав (на кам аз 8 аломат)',
         confirmPasswordLabel: 'Рамзро такрор кунед',
@@ -1051,6 +1185,8 @@ export const translations: Record<Language, TranslationKeys> = {
         editNodeTitle: 'Таҳрири гузар',
         saveChanges: 'Нигоҳ доштан',
         coordinatesLabel: 'Координатаҳо',
+        parentsLabel: 'Волидон',
+        childrenLabel: 'Фарзандон',
         openInMaps: 'Дар харита кушодан',
         mapSectionLabel: 'Нуқта дар харита',
         latLabel: 'Арз',
@@ -1074,6 +1210,13 @@ export const translations: Record<Language, TranslationKeys> = {
         nodeHistoryEmpty: 'Ҳанӯз тағйирот набудааст.',
         restoreVersionAction: 'Барқарор кардани ин версия',
         restoredNoticeLabel: 'Барқарор карда шуд',
+        commentsAction: 'Шарҳҳо',
+        commentsTitle: 'Шарҳҳо',
+        commentsEmpty: 'Ҳанӯз шарҳе нест.',
+        commentsPlaceholder: 'Шарҳ нависед...',
+        postCommentAction: 'Фиристодан',
+        deleteCommentAction: 'Нест кардани шарҳ',
+        deletedAuthorLabel: 'Корбари ҳазфшуда',
         structureEmptyLabel: 'Ин фазо холӣ аст.',
         shapeSectionLabel: 'Шакл',
         logoSectionLabel: 'Логотип',
@@ -1083,6 +1226,17 @@ export const translations: Record<Language, TranslationKeys> = {
         shapeTriangle: 'Секунҷа',
         shapeDiamond: 'Ромб',
         shapeHexagon: 'Шашкунҷа',
+        treeSettingsAction: 'Танзимоти дарахт',
+        treeSettingsTitle: 'Танзимоти дарахт',
+        treeSettingsHint:
+            'Гиреҳҳои фарзандии нав дар ҳар қисми ин дарахт ин шакл ва рангро ба таври пешфарз мегиранд.',
+        defaultShapeLabel: 'Шакли пешфарз',
+        defaultColorLabel: 'Ранги пешфарз',
+        defaultColorNone: 'Нест',
+        saveDefaultsAction: 'Нигоҳ доштани пешфарзҳо',
+        applyToAllAction: 'Татбиқ ба ҳамаи гиреҳҳои дарахт',
+        applyToAllHint:
+            'Шакл ва ранги ҳамаи гиреҳҳои мавҷудаи ин дарахт, аз ҷумла решаро, бозмегардонад.',
         uploadFile: 'Боргузории файл',
         addLink: 'Иловаи пайванд',
         linkUrlPlaceholder: 'https://...',
@@ -1247,6 +1401,26 @@ export const translations: Record<Language, TranslationKeys> = {
         actionUserDeleted: 'کاربر {name} را حذف کرد',
         actionPasswordReset: 'رمز عبور {name} را بازنشانی کرد',
         actionSpaceDeleted: 'فضای {name} را حذف کرد',
+        spaceActivityLogAction: 'گزارش فعالیت فضا',
+        spaceActivityLogTitle: 'فعالیت‌های فضا',
+        spaceActivityLogDesc: 'آخرین تغییرات در این فضا',
+        spaceFeedNodeCreated: 'گره {title} را ایجاد کرد',
+        spaceFeedNodeDeleted: 'گره {titles} را حذف کرد',
+        spaceFeedNodeDeletedCascade:
+            '{titles} را همراه با فرزندانش حذف کرد ({count} گره در مجموع)',
+        spaceFeedStructureMode: 'ساختار فضا را به «{structure}» تغییر داد',
+        spaceFeedLinked: '«{child}» را به «{parent}» متصل کرد',
+        spaceFeedUnlinked: 'اتصال «{child}» را از «{parent}» قطع کرد',
+        spaceFeedCollaboratorAdded: 'به «{name}» دسترسی {role} داد',
+        spaceFeedCollaboratorRemoved: 'دسترسی «{name}» را حذف کرد',
+        spaceFeedCollaboratorRoleChanged:
+            'نقش «{name}» را به «{role}» تغییر داد',
+        notificationsAction: 'اعلان‌ها',
+        notificationsTitle: 'اعلان‌ها',
+        notificationsEmpty: 'اعلان جدیدی نیست.',
+        notificationsMarkAllRead: 'علامت‌گذاری همه به‌عنوان خوانده‌شده',
+        notificationAccessGranted:
+            '{owner} به شما دسترسی {role} به «{space}» داد',
         resetPasswordTitle: 'بازنشانی رمز عبور',
         newPasswordLabel: 'رمز عبور جدید (حداقل ۸ نویسه)',
         confirmPasswordLabel: 'تکرار رمز عبور',
@@ -1312,6 +1486,8 @@ export const translations: Record<Language, TranslationKeys> = {
         editNodeTitle: 'ویرایش گره',
         saveChanges: 'ذخیره',
         coordinatesLabel: 'مختصات',
+        parentsLabel: 'والدین',
+        childrenLabel: 'فرزندان',
         openInMaps: 'باز کردن در نقشه',
         mapSectionLabel: 'نقطه روی نقشه',
         latLabel: 'عرض جغرافیایی',
@@ -1334,6 +1510,13 @@ export const translations: Record<Language, TranslationKeys> = {
         nodeHistoryEmpty: 'هنوز ویرایشی انجام نشده است.',
         restoreVersionAction: 'بازگردانی این نسخه',
         restoredNoticeLabel: 'بازگردانی شد',
+        commentsAction: 'نظرات',
+        commentsTitle: 'نظرات',
+        commentsEmpty: 'هنوز نظری ثبت نشده است.',
+        commentsPlaceholder: 'نظر خود را بنویسید...',
+        postCommentAction: 'ارسال',
+        deleteCommentAction: 'حذف نظر',
+        deletedAuthorLabel: 'کاربر حذف‌شده',
         structureEmptyLabel: 'این فضا خالی است.',
         shapeSectionLabel: 'شکل',
         logoSectionLabel: 'لوگو',
@@ -1343,6 +1526,17 @@ export const translations: Record<Language, TranslationKeys> = {
         shapeTriangle: 'مثلث',
         shapeDiamond: 'لوزی',
         shapeHexagon: 'شش‌ضلعی',
+        treeSettingsAction: 'تنظیمات درخت',
+        treeSettingsTitle: 'تنظیمات درخت',
+        treeSettingsHint:
+            'گره‌های فرزند جدید در هر جای این درخت به‌طور پیش‌فرض این شکل و رنگ را می‌گیرند.',
+        defaultShapeLabel: 'شکل پیش‌فرض',
+        defaultColorLabel: 'رنگ پیش‌فرض',
+        defaultColorNone: 'هیچ‌کدام',
+        saveDefaultsAction: 'ذخیره پیش‌فرض‌ها',
+        applyToAllAction: 'اعمال به همه گره‌های این درخت',
+        applyToAllHint:
+            'شکل و رنگ همه گره‌های موجود در این درخت، از جمله ریشه را بازنویسی می‌کند.',
         uploadFile: 'بارگذاری فایل',
         addLink: 'افزودن پیوند',
         linkUrlPlaceholder: 'https://...',

@@ -14,6 +14,10 @@ export interface NodeData {
     color: string;
     tags: string;
     shape: NodeShape;
+    // Только у корневых узлов (depth = 0) — форма/цвет по умолчанию для
+    // новых дочерних узлов дерева, задаются в панели настроек дерева.
+    default_shape: NodeShape | null;
+    default_color: string | null;
     logo_url: string | null;
     tree_root_id: number | null;
     map_lat: number | null;
@@ -91,6 +95,10 @@ const emit = defineEmits<{
         e: 'move-node',
         payload: { id: number; pos_x: number; pos_y: number; pos_z: number },
     ): void;
+    (
+        e: 'move-subtree',
+        payload: { id: number; pos_x: number; pos_y: number; pos_z: number }[],
+    ): void;
     (e: 'update-camera', payload: CameraState): void;
     (e: 'cursor-move', payload: { x: number; y: number }): void;
 }>();
@@ -137,6 +145,33 @@ let isPanning = false;
 let draggedNodeId: number | null = null;
 let dragOffset = { x: 0, y: 0 };
 let pointerStart = { x: 0, y: 0 };
+
+// Правая кнопка тащит узел вместе со всем его поддеревом, а не только его
+// самого — см. onPointerDown/onPointerMove/onPointerUp ниже. Поддерево не
+// прилипает к курсору жёстко: курсор задаёт цель (dragTargetWorld), а сама
+// отрисовываемая позиция (dragAnchorWorld) плавно её догоняет в tick() —
+// тот же приём, что уже используется для камеры (camera/cameraTarget).
+let draggedSubtreeIds: Set<number> | null = null;
+let subtreeRelativeOffsets: Map<number, { dx: number; dy: number }> | null =
+    null;
+let allNodeById: Map<number, NodeData> | null = null;
+let draggedTreeKey: number | null = null;
+let otherTreeGroups: Map<number, NodeData[]> | null = null;
+let otherTreeAABB: Map<
+    number,
+    { minX: number; maxX: number; minY: number; maxY: number }
+> | null = null;
+let touchedTreeKeys: Set<number> | null = null;
+
+let dragGrabOffset = { x: 0, y: 0 };
+let dragTargetWorld = { x: 0, y: 0 };
+let dragAnchorWorld = { x: 0, y: 0 };
+
+// Мировые единицы — минимальная дистанция между узлами разных деревьев,
+// прежде чем чужое дерево начинает "магнитом" отталкиваться в сторону.
+const MIN_SEPARATION = 130;
+const PUSH_EASE = 0.25;
+const DRAG_EASE = 0.3;
 
 function tokens() {
     return THEME_TOKENS[props.settings.theme] ?? THEME_TOKENS.cosmic;
@@ -661,6 +696,24 @@ function tick() {
         reportCamera();
     }
 
+    // Поддерево, которое сейчас тащат правой кнопкой, не прыгает к курсору
+    // мгновенно — якорь каждый кадр слегка её догоняет (та же идея, что и
+    // с камерой выше), а следом за ним по такой же логике отталкиваются
+    // чужие деревья, оказавшиеся слишком близко.
+    if (draggedSubtreeIds !== null) {
+        const dragEase = props.settings.reduceMotion ? 1 : DRAG_EASE;
+        const adx = dragTargetWorld.x - dragAnchorWorld.x;
+        const ady = dragTargetWorld.y - dragAnchorWorld.y;
+
+        if (Math.abs(adx) > 0.01 || Math.abs(ady) > 0.01) {
+            dragAnchorWorld.x += adx * dragEase;
+            dragAnchorWorld.y += ady * dragEase;
+            applySubtreePositions();
+            applyMagneticPush();
+            needsRedraw = true;
+        }
+    }
+
     // Перерисовываем только когда что-то изменилось, а не каждый кадр.
     if (needsRedraw) {
         needsRedraw = false;
@@ -668,7 +721,221 @@ function tick() {
     }
 }
 
+/**
+ * Только рёбра "первого родителя" (та же конвенция, что в layoutHierarchy) —
+ * если у узла есть второй, дополнительный родитель через link(), он не
+ * должен утаскивать чужое поддерево в наше при перетаскивании.
+ */
+function buildPrimaryChildrenMap(): Map<number, number[]> {
+    const primaryParent = new Map<number, number>();
+    props.edges.forEach((e) => {
+        if (!primaryParent.has(e.child_id)) {
+            primaryParent.set(e.child_id, e.parent_id);
+        }
+    });
+
+    const children = new Map<number, number[]>();
+    props.edges.forEach((e) => {
+        if (primaryParent.get(e.child_id) !== e.parent_id) {
+            return;
+        }
+
+        if (!children.has(e.parent_id)) {
+            children.set(e.parent_id, []);
+        }
+
+        children.get(e.parent_id)!.push(e.child_id);
+    });
+
+    return children;
+}
+
+function collectSubtreeIds(rootId: number): Set<number> {
+    const children = buildPrimaryChildrenMap();
+    const ids = new Set<number>([rootId]);
+    const queue = [rootId];
+
+    while (queue.length) {
+        const current = queue.shift()!;
+
+        for (const childId of children.get(current) ?? []) {
+            if (!ids.has(childId)) {
+                ids.add(childId);
+                queue.push(childId);
+            }
+        }
+    }
+
+    return ids;
+}
+
+function aabbOf(list: NodeData[]) {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    list.forEach((n) => {
+        minX = Math.min(minX, n.pos_x);
+        maxX = Math.max(maxX, n.pos_x);
+        minY = Math.min(minY, n.pos_y);
+        maxY = Math.max(maxY, n.pos_y);
+    });
+
+    return { minX, maxX, minY, maxY };
+}
+
+/** Грубая, но дешёвая проверка: могут ли эти два bounding box вообще пересечься с учётом отступа. */
+function aabbsNear(
+    a: ReturnType<typeof aabbOf>,
+    b: ReturnType<typeof aabbOf>,
+    margin: number,
+): boolean {
+    return !(
+        a.maxX + margin < b.minX ||
+        b.maxX < a.minX - margin ||
+        a.maxY + margin < b.minY ||
+        b.maxY < a.minY - margin
+    );
+}
+
+/** ПКМ по узлу: готовим перетаскивание всего его поддерева плюс данные для "магнитного" расталкивания чужих деревьев. */
+function beginSubtreeDrag(node: NodeData, world: { x: number; y: number }) {
+    draggedSubtreeIds = collectSubtreeIds(node.id);
+    allNodeById = new Map(props.nodes.map((n) => [n.id, n]));
+
+    // Курсор задаёт цель для узла-якоря (за который схватили), а не для
+    // каждого узла поддерева — их позиции пересчитываются от якоря его
+    // собственным неизменным смещением, так поддерево остаётся жёстким.
+    dragGrabOffset = { x: world.x - node.pos_x, y: world.y - node.pos_y };
+    dragAnchorWorld = { x: node.pos_x, y: node.pos_y };
+    dragTargetWorld = { x: node.pos_x, y: node.pos_y };
+
+    subtreeRelativeOffsets = new Map();
+    draggedSubtreeIds.forEach((id) => {
+        const n = allNodeById!.get(id);
+
+        if (n) {
+            subtreeRelativeOffsets!.set(id, {
+                dx: n.pos_x - node.pos_x,
+                dy: n.pos_y - node.pos_y,
+            });
+        }
+    });
+
+    draggedTreeKey = node.tree_root_id ?? node.id;
+    otherTreeGroups = new Map();
+    props.nodes.forEach((n) => {
+        const key = n.tree_root_id ?? n.id;
+
+        if (key === draggedTreeKey) {
+            return;
+        }
+
+        if (!otherTreeGroups!.has(key)) {
+            otherTreeGroups!.set(key, []);
+        }
+
+        otherTreeGroups!.get(key)!.push(n);
+    });
+
+    otherTreeAABB = new Map();
+    otherTreeGroups.forEach((list, key) => {
+        otherTreeAABB!.set(key, aabbOf(list));
+    });
+    touchedTreeKeys = new Set();
+}
+
+/** Переносит все узлы поддерева на текущую (уже сглаженную) позицию якоря. */
+function applySubtreePositions() {
+    draggedSubtreeIds!.forEach((id) => {
+        const n = allNodeById!.get(id);
+        const rel = subtreeRelativeOffsets!.get(id);
+
+        if (n && rel) {
+            n.pos_x = Math.round(dragAnchorWorld.x + rel.dx);
+            n.pos_y = Math.round(dragAnchorWorld.y + rel.dy);
+        }
+    });
+}
+
+/** "Магнитное" расталкивание: чужое дерево, оказавшееся ближе MIN_SEPARATION, плавно отодвигается прочь. */
+function applyMagneticPush() {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    draggedSubtreeIds!.forEach((id) => {
+        const n = allNodeById!.get(id);
+
+        if (!n) {
+            return;
+        }
+
+        minX = Math.min(minX, n.pos_x);
+        maxX = Math.max(maxX, n.pos_x);
+        minY = Math.min(minY, n.pos_y);
+        maxY = Math.max(maxY, n.pos_y);
+    });
+
+    const draggedAABB = { minX, maxX, minY, maxY };
+    const ease = props.settings.reduceMotion ? 1 : PUSH_EASE;
+
+    otherTreeGroups!.forEach((list, key) => {
+        const bbox = otherTreeAABB!.get(key)!;
+
+        if (!aabbsNear(draggedAABB, bbox, MIN_SEPARATION)) {
+            return;
+        }
+
+        let bestSq = Infinity;
+        let bestDx = 0;
+        let bestDy = 0;
+
+        draggedSubtreeIds!.forEach((id) => {
+            const a = allNodeById!.get(id)!;
+
+            list.forEach((b) => {
+                const dx = b.pos_x - a.pos_x;
+                const dy = b.pos_y - a.pos_y;
+                const sq = dx * dx + dy * dy;
+
+                if (sq < bestSq) {
+                    bestSq = sq;
+                    bestDx = dx;
+                    bestDy = dy;
+                }
+            });
+        });
+
+        const dist = Math.sqrt(bestSq);
+
+        if (dist < MIN_SEPARATION) {
+            const push = (MIN_SEPARATION - dist) * ease;
+            const nx = bestDx / (dist || 1);
+            const ny = bestDy / (dist || 1);
+            const pdx = nx * push;
+            const pdy = ny * push;
+
+            list.forEach((n) => {
+                n.pos_x += pdx;
+                n.pos_y += pdy;
+            });
+            bbox.minX += pdx;
+            bbox.maxX += pdx;
+            bbox.minY += pdy;
+            bbox.maxY += pdy;
+            touchedTreeKeys!.add(key);
+        }
+    });
+}
+
 function onPointerDown(event: PointerEvent) {
+    if (draggedNodeId !== null || draggedSubtreeIds !== null || isPanning) {
+        return;
+    }
+
     const rect = canvasRef.value?.getBoundingClientRect();
 
     if (!rect) {
@@ -686,7 +953,9 @@ function onPointerDown(event: PointerEvent) {
 
         // Viewer видит и выбирает узлы, но таскать их по холсту не может —
         // сервер такое перемещение всё равно отклонит (can:edit,space).
-        if (props.canEdit) {
+        if (event.button === 2 && props.canEdit) {
+            beginSubtreeDrag(node, world);
+        } else if (event.button === 0 && props.canEdit) {
             draggedNodeId = node.id;
             dragOffset = { x: world.x - node.pos_x, y: world.y - node.pos_y };
         }
@@ -732,6 +1001,17 @@ function onPointerMove(event: PointerEvent) {
         return;
     }
 
+    if (draggedSubtreeIds !== null) {
+        // Только обновляем цель — сама анимация (плавная подгонка позиции и
+        // магнитное расталкивание) считается в tick(), см. там.
+        dragTargetWorld = {
+            x: world.x - dragGrabOffset.x,
+            y: world.y - dragGrabOffset.y,
+        };
+
+        return;
+    }
+
     const hovered = nodeAt(world.x, world.y);
 
     emit('hover-node', hovered);
@@ -753,10 +1033,38 @@ function onPointerUp() {
                 pos_z: 0,
             });
         }
+    } else if (draggedSubtreeIds !== null) {
+        // Отпустили раньше, чем якорь догнал курсор, — довершаем сглаживание
+        // одним шагом, чтобы сохранённая позиция совпадала с тем, что видно.
+        dragAnchorWorld = { ...dragTargetWorld };
+        applySubtreePositions();
+        applyMagneticPush();
+        needsRedraw = true;
+
+        const idsToPersist = new Set<number>(draggedSubtreeIds);
+        touchedTreeKeys!.forEach((key) => {
+            otherTreeGroups!.get(key)?.forEach((n) => idsToPersist.add(n.id));
+        });
+
+        const updates = Array.from(idsToPersist, (id) => {
+            const n = allNodeById!.get(id)!;
+
+            return { id: n.id, pos_x: n.pos_x, pos_y: n.pos_y, pos_z: n.pos_z };
+        });
+
+        if (updates.length) {
+            emit('move-subtree', updates);
+        }
     }
 
     isPanning = false;
     draggedNodeId = null;
+    draggedSubtreeIds = null;
+    subtreeRelativeOffsets = null;
+    allNodeById = null;
+    otherTreeGroups = null;
+    otherTreeAABB = null;
+    touchedTreeKeys = null;
 }
 
 function onWheel(event: WheelEvent) {
@@ -865,6 +1173,7 @@ onBeforeUnmount(() => {
             @pointerup="onPointerUp"
             @pointercancel="onPointerUp"
             @wheel="onWheel"
+            @contextmenu.prevent
         />
     </div>
 </template>
