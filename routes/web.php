@@ -17,6 +17,9 @@ use Illuminate\Support\Facades\Route;
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'create'])->name('login');
     Route::post('/login', [AuthController::class, 'store']);
+    Route::post('/login/verify-code', [AuthController::class, 'verifyCode']);
+    Route::post('/login/resend-code', [AuthController::class, 'resendCode']);
+    Route::post('/login/cancel', [AuthController::class, 'cancel']);
 });
 
 Route::post('/logout', [AuthController::class, 'destroy'])->middleware('auth')->name('logout');
@@ -29,7 +32,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/spaces', [SpaceController::class, 'index']);
         Route::post('/spaces', [SpaceController::class, 'store']);
         Route::post('/spaces/import', [SpaceController::class, 'import']);
-        Route::get('/search', [SearchController::class, 'index']);
+        Route::get('/search', [SearchController::class, 'index'])->middleware('throttle:search');
 
         // Уведомления пользователя — доступ открыт в пространстве, кто-то
         // ответил на комментарий и т.п. Не привязаны к конкретному пространству.
@@ -38,23 +41,27 @@ Route::middleware('auth')->group(function () {
         Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
 
         // Пользователи — узлы в Admin-пространстве; управляет только root.
-        Route::post('/admin/users', [UserController::class, 'store']);
-        Route::put('/admin/users/{user}/password', [UserController::class, 'updatePassword']);
-        Route::delete('/admin/users/{user}', [UserController::class, 'destroy']);
+        Route::middleware('throttle:admin-users')->group(function () {
+            Route::post('/admin/users', [UserController::class, 'store']);
+            Route::put('/admin/users/{user}/password', [UserController::class, 'updatePassword']);
+            Route::delete('/admin/users/{user}', [UserController::class, 'destroy']);
+        });
         Route::get('/admin/activity-log', [ActivityLogController::class, 'index']);
+        Route::get('/admin/activity-log/verify', [ActivityLogController::class, 'verify']);
 
         // Всё, что привязано к конкретному пространству: владелец, root, или участник шеринга.
         Route::middleware('can:access,space')->prefix('spaces/{space}')->group(function () {
             // Только чтение — доступно viewer'ам наравне с editor'ами.
-            Route::get('/export', [SpaceController::class, 'export']);
+            Route::get('/export', [SpaceController::class, 'export'])->middleware('throttle:export');
             Route::get('/graph', [GraphController::class, 'fetchGraph']);
             Route::get('/nodes/{node}/logo', [GraphController::class, 'logo']);
-            Route::get('/attachments/search', [AttachmentController::class, 'search']);
+            Route::get('/attachments/search', [AttachmentController::class, 'search'])->middleware('throttle:search');
             Route::get('/nodes/{node}/attachments/{attachment}/download', [AttachmentController::class, 'download']);
             Route::get('/nodes/{node}/attachments/{attachment}/preview', [AttachmentController::class, 'preview']);
             Route::get('/nodes/{node}/attachments/{attachment}/content', [AttachmentController::class, 'content']);
             Route::get('/nodes/{node}/deletion-preview', [GraphController::class, 'computeDeletion']);
             Route::get('/nodes/{node}/revisions', [GraphController::class, 'nodeRevisions']);
+            Route::post('/nodes/{node}/viewed', [GraphController::class, 'nodeViewed']);
 
             // Комментарии — не привязаны к роли editor, viewer тоже может обсуждать.
             Route::get('/nodes/{node}/comments', [NodeCommentController::class, 'index']);
@@ -74,7 +81,7 @@ Route::middleware('auth')->group(function () {
                 Route::put('/nodes/{node}/tree-settings', [NodeTreeSettingsController::class, 'update']);
                 Route::post('/nodes/{node}/logo', [GraphController::class, 'uploadLogo']);
 
-                Route::post('/nodes/{node}/attachments', [AttachmentController::class, 'store']);
+                Route::post('/nodes/{node}/attachments', [AttachmentController::class, 'store'])->middleware('throttle:uploads');
                 Route::put('/nodes/{node}/attachments/{attachment}/content', [AttachmentController::class, 'updateContent']);
                 Route::delete('/nodes/{node}/attachments/{attachment}', [AttachmentController::class, 'destroy']);
 

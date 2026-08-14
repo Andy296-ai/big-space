@@ -20,11 +20,15 @@ test('creating and deleting nodes leaves a trail scoped to the space', function 
 
     $this->postJson("/api/spaces/{$this->space->id}/nodes/delete-many", ['ids' => [$root['id']]]);
 
-    $entries = $this->getJson("/api/spaces/{$this->space->id}/activity-log")
-        ->assertStatus(200)
-        ->json('entries');
+    // Само чтение лога тоже пишет запись (activity_log.viewed) — отсеиваем
+    // её, тест проверяет только бизнес-события.
+    $entries = collect(
+        $this->getJson("/api/spaces/{$this->space->id}/activity-log")
+            ->assertStatus(200)
+            ->json('entries'),
+    )->reject(fn ($e) => $e['action'] === 'activity_log.viewed')->values();
 
-    $actions = collect($entries)->pluck('action')->all();
+    $actions = $entries->pluck('action')->all();
     expect($actions)->toBe(['node.deleted', 'node.created', 'node.created']);
     expect($entries[0]['meta']['titles'])->toBe(['Root']);
     expect($entries[0]['actor']['id'])->toBe($this->owner->id);
@@ -41,8 +45,10 @@ test('linking and unlinking nodes, and switching structure mode, are logged as s
     $this->putJson("/api/spaces/{$this->space->id}/structure", ['structure' => 'network'])
         ->assertStatus(200);
 
-    $entries = $this->getJson("/api/spaces/{$this->space->id}/activity-log")->json('entries');
-    $actions = collect($entries)->pluck('action')->all();
+    $entries = collect($this->getJson("/api/spaces/{$this->space->id}/activity-log")->json('entries'))
+        ->reject(fn ($e) => $e['action'] === 'activity_log.viewed')
+        ->values();
+    $actions = $entries->pluck('action')->all();
 
     expect($actions)->toBe(['structure.changed', 'structure.changed', 'structure.changed']);
     expect($entries[0]['meta']['action'])->toBe('mode_changed');
@@ -65,8 +71,10 @@ test('sharing changes are logged: added, role changed, removed', function () {
 
     $this->deleteJson("/api/spaces/{$this->space->id}/collaborators/{$friend->id}")->assertStatus(200);
 
-    $entries = $this->getJson("/api/spaces/{$this->space->id}/activity-log")->json('entries');
-    $actions = collect($entries)->pluck('action')->all();
+    $entries = collect($this->getJson("/api/spaces/{$this->space->id}/activity-log")->json('entries'))
+        ->reject(fn ($e) => $e['action'] === 'activity_log.viewed')
+        ->values();
+    $actions = $entries->pluck('action')->all();
 
     expect($actions)->toBe([
         'collaborator.removed',
@@ -94,7 +102,9 @@ test('activity from a different space never leaks into this one\'s feed', functi
 
     $this->postJson("/api/spaces/{$this->space->id}/nodes/root", ['title' => 'This root']);
 
-    $entries = $this->getJson("/api/spaces/{$this->space->id}/activity-log")->json('entries');
+    $entries = collect($this->getJson("/api/spaces/{$this->space->id}/activity-log")->json('entries'))
+        ->reject(fn ($e) => $e['action'] === 'activity_log.viewed')
+        ->values();
 
     expect($entries)->toHaveCount(1);
     expect($entries[0]['meta']['title'])->toBe('This root');

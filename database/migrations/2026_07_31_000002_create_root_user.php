@@ -21,6 +21,17 @@ return new class extends Migration
             return;
         }
 
+        // Дефолтный пароль (r@@t00) закоммичен в config/auth.php открытым
+        // текстом — это нормально для локальной разработки, но за пределами
+        // local/testing root ни в коем случае не должен получить именно его.
+        if (! config('auth.root.password_explicitly_set') && ! app()->environment(['local', 'testing'])) {
+            throw new RuntimeException(
+                'ROOT_PASSWORD не задан в .env. За пределами local/testing нельзя '.
+                'сеять root с дефолтным паролем из config/auth.php (он закоммичен в git) '.
+                '— задайте ROOT_PASSWORD перед запуском миграций.',
+            );
+        }
+
         DB::table('users')->insert([
             'name' => $username,
             'email' => config('auth.root.email'),

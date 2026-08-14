@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
-import { LockKeyhole } from 'lucide-vue-next';
+import { LockKeyhole, ShieldCheck } from 'lucide-vue-next';
 import { computed, onMounted, ref } from 'vue';
 import NodusMark from '../components/NodusMark.vue';
 import {
@@ -10,6 +10,11 @@ import {
     translations,
 } from '../types/settings';
 import type { AppSettings, Language } from '../types/settings';
+
+const props = defineProps<{
+    step: 'credentials' | 'code';
+    maskedEmail?: string;
+}>();
 
 const settings = ref<AppSettings>(loadSettings());
 const t = computed(() => translations[settings.value.lang]);
@@ -26,6 +31,14 @@ const form = useForm({
     password: '',
     remember: false,
 });
+
+const codeForm = useForm({
+    code: '',
+});
+
+const resendForm = useForm({});
+const cancelForm = useForm({});
+const resendJustSent = ref(false);
 
 /**
  * Сервер отдаёт код, а не готовый текст — иначе сообщение об ошибке было бы
@@ -49,6 +62,32 @@ const errorMessage = computed(() => {
     return raw;
 });
 
+const codeErrorMessage = computed(() => {
+    const raw = codeForm.errors.code;
+
+    if (!raw) {
+        return null;
+    }
+
+    if (raw === 'code_invalid') {
+        return t.value.codeInvalid;
+    }
+
+    if (raw === 'code_expired') {
+        return t.value.codeExpired;
+    }
+
+    if (raw === 'too_many_attempts') {
+        return t.value.tooManyAttempts;
+    }
+
+    return raw;
+});
+
+const codeSentToMessage = computed(() =>
+    t.value.codeSentTo.replace('{email}', props.maskedEmail ?? ''),
+);
+
 function selectLanguage(lang: Language) {
     settings.value = { ...settings.value, lang };
     saveSettings(settings.value);
@@ -59,6 +98,24 @@ function submit() {
     form.post('/login', {
         onFinish: () => form.reset('password'),
     });
+}
+
+function submitCode() {
+    codeForm.post('/login/verify-code');
+}
+
+function resendCode() {
+    resendJustSent.value = false;
+    resendForm.post('/login/resend-code', {
+        onSuccess: () => {
+            resendJustSent.value = true;
+            codeForm.reset('code');
+        },
+    });
+}
+
+function backToLogin() {
+    cancelForm.post('/login/cancel');
 }
 
 onMounted(() => applyTheme(settings.value));
@@ -109,71 +166,148 @@ onMounted(() => applyTheme(settings.value));
                 </div>
             </div>
 
-            <p class="mb-5 text-xs text-slate-400">{{ t.loginSubtitle }}</p>
+            <template v-if="props.step === 'credentials'">
+                <p class="mb-5 text-xs text-slate-400">{{ t.loginSubtitle }}</p>
 
-            <form class="space-y-4" @submit.prevent="submit">
-                <div>
+                <form class="space-y-4" @submit.prevent="submit">
+                    <div>
+                        <label
+                            for="username"
+                            class="mb-1.5 block text-xs font-semibold text-slate-300"
+                        >
+                            {{ t.usernameLabel }}
+                        </label>
+                        <input
+                            id="username"
+                            v-model="form.username"
+                            type="text"
+                            autocomplete="username"
+                            autofocus
+                            required
+                            class="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-slate-100 transition-colors focus:border-blue-500 focus:outline-none"
+                        />
+                    </div>
+
+                    <div>
+                        <label
+                            for="password"
+                            class="mb-1.5 block text-xs font-semibold text-slate-300"
+                        >
+                            {{ t.passwordLabel }}
+                        </label>
+                        <input
+                            id="password"
+                            v-model="form.password"
+                            type="password"
+                            autocomplete="current-password"
+                            required
+                            class="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-slate-100 transition-colors focus:border-blue-500 focus:outline-none"
+                        />
+                    </div>
+
                     <label
-                        for="username"
-                        class="mb-1.5 block text-xs font-semibold text-slate-300"
+                        class="flex cursor-pointer items-center gap-2 text-xs text-slate-300 select-none"
                     >
-                        {{ t.usernameLabel }}
+                        <input
+                            v-model="form.remember"
+                            type="checkbox"
+                            class="rounded border-slate-700 bg-slate-800 text-blue-500"
+                        />
+                        <span>{{ t.rememberMe }}</span>
                     </label>
-                    <input
-                        id="username"
-                        v-model="form.username"
-                        type="text"
-                        autocomplete="username"
-                        autofocus
-                        required
-                        class="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-slate-100 transition-colors focus:border-blue-500 focus:outline-none"
-                    />
-                </div>
 
-                <div>
-                    <label
-                        for="password"
-                        class="mb-1.5 block text-xs font-semibold text-slate-300"
+                    <p
+                        v-if="errorMessage"
+                        class="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-400"
                     >
-                        {{ t.passwordLabel }}
-                    </label>
-                    <input
-                        id="password"
-                        v-model="form.password"
-                        type="password"
-                        autocomplete="current-password"
-                        required
-                        class="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-slate-100 transition-colors focus:border-blue-500 focus:outline-none"
-                    />
-                </div>
+                        {{ errorMessage }}
+                    </p>
 
-                <label
-                    class="flex cursor-pointer items-center gap-2 text-xs text-slate-300 select-none"
-                >
-                    <input
-                        v-model="form.remember"
-                        type="checkbox"
-                        class="rounded border-slate-700 bg-slate-800 text-blue-500"
-                    />
-                    <span>{{ t.rememberMe }}</span>
-                </label>
+                    <button
+                        type="submit"
+                        :disabled="form.processing"
+                        class="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-all hover:bg-blue-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                        <LockKeyhole class="h-4 w-4" />
+                        <span>{{
+                            form.processing ? t.signingIn : t.signIn
+                        }}</span>
+                    </button>
+                </form>
+            </template>
 
-                <p
-                    v-if="errorMessage"
-                    class="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-400"
-                >
-                    {{ errorMessage }}
+            <template v-else>
+                <p class="mb-5 text-xs text-slate-400">
+                    {{ codeSentToMessage }}
                 </p>
 
-                <button
-                    type="submit"
-                    :disabled="form.processing"
-                    class="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-all hover:bg-blue-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                    <LockKeyhole class="h-4 w-4" />
-                    <span>{{ form.processing ? t.signingIn : t.signIn }}</span>
-                </button>
-            </form>
+                <form class="space-y-4" @submit.prevent="submitCode">
+                    <div>
+                        <label
+                            for="code"
+                            class="mb-1.5 block text-xs font-semibold text-slate-300"
+                        >
+                            {{ t.codeLabel }}
+                        </label>
+                        <input
+                            id="code"
+                            v-model="codeForm.code"
+                            type="text"
+                            inputmode="numeric"
+                            autocomplete="one-time-code"
+                            maxlength="6"
+                            autofocus
+                            required
+                            class="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-center text-lg font-semibold tracking-[0.4em] text-slate-100 transition-colors focus:border-blue-500 focus:outline-none"
+                        />
+                    </div>
+
+                    <p
+                        v-if="codeErrorMessage"
+                        class="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-400"
+                    >
+                        {{ codeErrorMessage }}
+                    </p>
+
+                    <p
+                        v-else-if="resendJustSent"
+                        class="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-400"
+                    >
+                        {{ t.codeResent }}
+                    </p>
+
+                    <button
+                        type="submit"
+                        :disabled="codeForm.processing"
+                        class="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-all hover:bg-blue-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                        <ShieldCheck class="h-4 w-4" />
+                        <span>{{
+                            codeForm.processing
+                                ? t.verifyingCode
+                                : t.verifyCodeAction
+                        }}</span>
+                    </button>
+
+                    <div class="flex items-center justify-between text-xs">
+                        <button
+                            type="button"
+                            class="text-slate-400 hover:text-slate-200"
+                            :disabled="resendForm.processing"
+                            @click="resendCode"
+                        >
+                            {{ t.resendCodeAction }}
+                        </button>
+                        <button
+                            type="button"
+                            class="text-slate-400 hover:text-slate-200"
+                            @click="backToLogin"
+                        >
+                            {{ t.backToLoginAction }}
+                        </button>
+                    </div>
+                </form>
+            </template>
         </div>
     </div>
 </template>

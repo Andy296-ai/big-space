@@ -140,6 +140,8 @@ class GraphController extends Controller
 
     public function addChild(Request $request, Space $space, Node $parent): JsonResponse
     {
+        abort_unless($parent->space_id === $space->id, 404);
+
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -199,6 +201,8 @@ class GraphController extends Controller
     /** Клонирует узел вместе со всем поддеревом и вложениями под указанным родителем (или новым корнем, если parent_id не задан). */
     public function copy(Request $request, Space $space, Node $node): JsonResponse
     {
+        abort_unless($node->space_id === $space->id, 404);
+
         $validated = $request->validate([
             'parent_id' => 'nullable|integer',
         ]);
@@ -222,6 +226,8 @@ class GraphController extends Controller
 
     public function move(Request $request, Space $space, Node $node): JsonResponse
     {
+        abort_unless($node->space_id === $space->id, 404);
+
         $validated = $request->validate([
             'pos_x' => 'required|numeric',
             'pos_y' => 'required|numeric',
@@ -261,6 +267,8 @@ class GraphController extends Controller
 
     public function update(Request $request, Space $space, Node $node): JsonResponse
     {
+        abort_unless($node->space_id === $space->id, 404);
+
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -292,13 +300,31 @@ class GraphController extends Controller
             'pos_y' => $validated['pos_y'] ?? $node->pos_y,
         ]);
 
+        ActivityLog::record(
+            $request->user(),
+            ActivityLog::ACTION_NODE_UPDATED,
+            'node',
+            $node->id,
+            ['title' => $node->title],
+            $space->id,
+        );
+
         return response()->json($node->load('attachments'));
     }
 
     /** История правок узла, новые сверху. */
-    public function nodeRevisions(Space $space, Node $node): JsonResponse
+    public function nodeRevisions(Request $request, Space $space, Node $node): JsonResponse
     {
         abort_unless($node->space_id === $space->id, 404);
+
+        ActivityLog::record(
+            $request->user(),
+            ActivityLog::ACTION_NODE_REVISIONS_VIEWED,
+            'node',
+            $node->id,
+            [],
+            $space->id,
+        );
 
         $revisions = $node->revisions()
             ->with('editor:id,name')
@@ -306,6 +332,27 @@ class GraphController extends Controller
             ->get();
 
         return response()->json($revisions);
+    }
+
+    /**
+     * Лёгкий сигнал открытия карточки узла — сам граф отдаётся одним
+     * запросом (fetchGraph) и кэшируется на клиенте, так что без этого
+     * маршрута «кто просматривал запись X» ответить нечем.
+     */
+    public function nodeViewed(Request $request, Space $space, Node $node): JsonResponse
+    {
+        abort_unless($node->space_id === $space->id, 404);
+
+        ActivityLog::record(
+            $request->user(),
+            ActivityLog::ACTION_NODE_VIEWED,
+            'node',
+            $node->id,
+            [],
+            $space->id,
+        );
+
+        return response()->json(['message' => 'ok']);
     }
 
     /**
@@ -371,8 +418,8 @@ class GraphController extends Controller
     public function link(Request $request, Space $space): JsonResponse
     {
         $validated = $request->validate([
-            'parent_id' => 'required|exists:nodes,id',
-            'child_id' => 'required|exists:nodes,id',
+            'parent_id' => ['required', Rule::exists('nodes', 'id')->where('space_id', $space->id)],
+            'child_id' => ['required', Rule::exists('nodes', 'id')->where('space_id', $space->id)],
         ]);
 
         $violation = $this->graphRepo->validateLink($space, $validated['parent_id'], $validated['child_id']);
@@ -436,8 +483,8 @@ class GraphController extends Controller
     public function unlink(Request $request, Space $space): JsonResponse
     {
         $validated = $request->validate([
-            'parent_id' => 'required|exists:nodes,id',
-            'child_id' => 'required|exists:nodes,id',
+            'parent_id' => ['required', Rule::exists('nodes', 'id')->where('space_id', $space->id)],
+            'child_id' => ['required', Rule::exists('nodes', 'id')->where('space_id', $space->id)],
         ]);
 
         $titles = Node::whereIn('id', [$validated['parent_id'], $validated['child_id']])->pluck('title', 'id');
@@ -468,6 +515,8 @@ class GraphController extends Controller
 
     public function computeDeletion(Space $space, Node $node): JsonResponse
     {
+        abort_unless($node->space_id === $space->id, 404);
+
         $deletionIds = $this->graphRepo->computeDeletionSetForSpace($space, [$node->id]);
 
         return response()->json([

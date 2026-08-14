@@ -129,6 +129,11 @@ return [
         'username' => env('ROOT_USERNAME', 'root'),
         'email' => env('ROOT_EMAIL', 'root@localhost'),
         'password' => env('ROOT_PASSWORD', 'r@@t00'),
+        // Отдельным флагом — сам 'password' всегда non-null (есть дефолт),
+        // так что по нему не отличить «явно задан» от «взят по умолчанию».
+        // Нужно create_root_user-миграции, чтобы не засеять прод дефолтным
+        // паролем, закоммиченным в этот файл открытым текстом.
+        'password_explicitly_set' => env('ROOT_PASSWORD') !== null,
     ],
 
 ];

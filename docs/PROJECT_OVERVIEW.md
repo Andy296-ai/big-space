@@ -19,7 +19,7 @@ Nodus (кодовое имя репозитория — `laravel_infinite_space`
 - **Backend**: Laravel 13 (стиль `bootstrap/app.php`, без `Kernel.php`), PHP.
 - **Frontend**: Inertia.js + Vue 3 (`<script setup>`, TypeScript) + Tailwind CSS.
 - **Рендер графа**: собственный canvas-рендерер (`SpaceScene.vue`) — без сторонних графовых библиотек, ручной `requestAnimationFrame`-цикл, ручные world↔screen трансформации.
-- **База данных (dev)**: SQLite.
+- **База данных**: PostgreSQL (рекомендуется, легко переносится между серверами через `pg_dump`/`pg_restore`, держит параллельную запись под нагрузкой); SQLite остаётся вариантом для быстрого локального пробного запуска (`DB_CONNECTION=sqlite` в `.env`).
 - **Живое обновление**: Laravel Reverb (свой WebSocket-сервер, протокол Pusher) + Laravel Echo на фронте. Presence-каналы для "кто сейчас смотрит" и живых курсоров (whisper-события, без похода на сервер).
 - **Тесты**: Pest (backend), Vitest (frontend utils).
 - **Статический анализ**: PHPStan/Larastan (уровень 7), Pint (форматирование PHP), ESLint + Prettier (фронт), vue-tsc (типы).
@@ -177,7 +177,7 @@ GET/POST/DELETE /nodes/{n}/comments...
 ## 6. Локальный запуск
 
 ### Требования
-PHP + Composer, Node/npm, SQLite (или другая БД, см. `.env`).
+PHP (с расширением `pdo_pgsql`) + Composer, Node/npm, PostgreSQL (роль + база, см. `.env`). Для быстрого пробного запуска подойдёт и SQLite — `DB_CONNECTION=sqlite`, остальные `DB_*` не нужны.
 
 ### Быстрый старт
 ```bash
@@ -277,7 +277,7 @@ NO_STRIP=1 npm run tauri build
 1. **Хостинг** — сервер должен быть доступен по сети: либо VPS с доменом, либо домашняя машина/NAS (тогда нужен проброс портов или Dynamic DNS, если IP не статический).
 2. **HTTPS обязателен** — без него живые WebSocket-соединения (Reverb, `wss://`) у удалённых клиентов будут рваться или блокироваться браузерным движком (mixed content), и cookie сессии по-хорошему тоже должны идти с флагом `Secure`. Обычно — nginx/Caddy как reverse proxy перед приложением, с сертификатом от Let's Encrypt.
 3. **Process manager** — `php artisan serve` не для продакшена. Нужен php-fpm (или FrankenPHP/Laravel Octane) за nginx, плюс `supervisor`/`systemd`, чтобы `reverb:start` не падал и перезапускался сам.
-4. **База данных** — SQLite при нескольких одновременно ПИШУЩИХ пользователях не идеал (лочится на запись); для стабильной многопользовательской работы разумнее MySQL/PostgreSQL. Для маленькой команды SQLite в WAL-режиме тоже может пожить — не блокер для старта.
+4. **База данных** — уже сделано локально: проект переведён на PostgreSQL (см. `.env`, `DB_CONNECTION=pgsql`) именно из-за многопользовательской записи и лёгкого переноса между серверами через `pg_dump`/`pg_restore`. На реальном сервере остаётся установить и настроить сам PostgreSQL (роль, база, доступ) — конфигурация Laravel уже готова.
 5. **Reverb должен быть проброшен наружу** — обычно через тот же reverse proxy, который проксирует `wss://` трафик на порт Reverb (сейчас 8080).
 6. **Очередь** — `QUEUE_CONNECTION=database`, но воркер (`php artisan queue:work`) сейчас нигде не запущен (см. §3.4, почему уведомления сознательно этого не требуют). Если в будущем появится что-то, что реально нуждается в очереди — либо переключить на `sync`, либо поднять воркер под supervisor.
 

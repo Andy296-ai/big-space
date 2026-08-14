@@ -24,8 +24,12 @@ test('creating, resetting the password of, and deleting a user each leave a trai
 
     $this->deleteJson("/api/admin/users/{$userId}")->assertStatus(200);
 
-    $entries = $this->getJson('/api/admin/activity-log')->assertStatus(200)->json('entries');
-    $actions = collect($entries)->pluck('action')->take(3)->all();
+    // Само чтение лога тоже пишет запись (activity_log.viewed) — отсеиваем
+    // её, тест проверяет только бизнес-события.
+    $entries = collect($this->getJson('/api/admin/activity-log')->assertStatus(200)->json('entries'))
+        ->reject(fn ($e) => $e['action'] === 'activity_log.viewed')
+        ->values();
+    $actions = $entries->pluck('action')->take(3)->all();
 
     // Most recent first.
     expect($actions)->toBe([
@@ -52,9 +56,11 @@ test('root deleting someone else\'s space is logged, a user deleting their own i
     $this->postJson('/api/spaces', ['name' => 'Root Extra 2']);
     $this->deleteJson("/api/spaces/{$rootSpace['id']}")->assertStatus(200);
 
-    $entries = $this->getJson('/api/admin/activity-log')->assertStatus(200)->json('entries');
+    $entries = collect($this->getJson('/api/admin/activity-log')->assertStatus(200)->json('entries'))
+        ->reject(fn ($e) => $e['action'] === 'activity_log.viewed')
+        ->values();
 
-    expect(collect($entries)->where('action', 'space.deleted')->count())->toBe(1);
+    expect($entries->where('action', 'space.deleted')->count())->toBe(1);
     expect($entries[0]['meta']['name'])->toBe('Root Extra 1');
 });
 

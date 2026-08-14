@@ -25,6 +25,7 @@ import {
     X,
 } from 'lucide-vue-next';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { apiFetch } from '../lib/api';
 import { useT } from '../lib/i18n';
 import AttachmentViewer from './AttachmentViewer.vue';
 import NodeCommentsModal from './NodeCommentsModal.vue';
@@ -71,12 +72,20 @@ const showTreeSettings = ref(false);
 // При переходе на другой узел список снова сворачивается.
 watch(
     () => props.node?.id,
-    () => {
+    (nodeId) => {
         expanded.value = false;
         showStructureViewer.value = false;
         showHistory.value = false;
         showComments.value = false;
         showTreeSettings.value = false;
+
+        // Сигнал «карточка узла открыта» — для журнала аудита. Fire-and-forget:
+        // не блокирует открытие карточки, не показывает ошибку пользователю.
+        if (nodeId != null) {
+            apiFetch(`/api/spaces/${props.spaceId}/nodes/${nodeId}/viewed`, {
+                method: 'POST',
+            }).catch(() => {});
+        }
     },
 );
 

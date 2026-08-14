@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 
 /**
  * Пользователи системы существуют как узлы в единственном Admin-пространстве
@@ -35,7 +36,7 @@ class UserController extends Controller
             'name' => 'required|string|max:255',
             'username' => 'required|string|max:255|unique:users,name',
             'email' => 'required|email|max:255|unique:users,email',
-            'password' => ['required', 'string', 'min:8'],
+            'password' => ['required', 'string', Password::defaults()],
             'color' => 'nullable|string|max:32',
             'shape' => ['nullable', Rule::in(Node::SHAPES)],
             'tags' => 'nullable|string|max:255',
@@ -91,7 +92,7 @@ class UserController extends Controller
         abort_unless($request->user()->is_root, 403);
 
         $validated = $request->validate([
-            'password' => ['required', 'string', 'min:8'],
+            'password' => ['required', 'string', Password::defaults()],
         ]);
 
         $user->update(['password' => Hash::make($validated['password'])]);

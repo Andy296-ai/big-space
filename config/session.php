@@ -169,7 +169,16 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    // По умолчанию — true в production, иначе false: раньше эта настройка
+    // ничего не наследовала (env() без второго аргумента = null = "не
+    // Secure"), так что даже боевой деплой без явного SESSION_SECURE_COOKIE
+    // в .env отправлял бы cookie сессии не только по HTTPS. См. TRUSTED_PROXIES
+    // в bootstrap/app.php — без него isSecure()/environment-детект за
+    // reverse-proxy всё равно не сработает. Именно env('APP_ENV'), а не
+    // app()->environment() — на этой стадии загрузки конфигов контейнер ещё
+    // не готов разрешать Application::environment() (see "Target class [env]
+    // does not exist" — известная ловушка Laravel).
+    'secure' => env('SESSION_SECURE_COOKIE', env('APP_ENV') === 'production'),
 
     /*
     |--------------------------------------------------------------------------

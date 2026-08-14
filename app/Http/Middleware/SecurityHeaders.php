@@ -30,6 +30,16 @@ class SecurityHeaders
         );
         $response->headers->set('Content-Security-Policy', $this->contentSecurityPolicy($nonce));
 
+        // HSTS имеет смысл только поверх HTTPS — на голом http:// (как сейчас на
+        // localhost) браузер его всё равно игнорирует, но незачем светить лишний
+        // заголовок там, где соединение не защищено.
+        if ($request->isSecure()) {
+            $response->headers->set(
+                'Strict-Transport-Security',
+                'max-age=31536000; includeSubDomains',
+            );
+        }
+
         return $response;
     }
 

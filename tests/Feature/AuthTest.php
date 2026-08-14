@@ -19,14 +19,17 @@ test('the login page renders for guests', function () {
     $this->get('/login')->assertStatus(200);
 });
 
-test('root signs in with the configured credentials', function () {
+test('correct credentials move to the code step, without signing in yet', function () {
     $response = $this->post('/login', [
         'username' => config('auth.root.username'),
         'password' => config('auth.root.password'),
     ]);
 
-    $response->assertRedirect('/');
-    $this->assertAuthenticated();
+    $response->assertRedirect('/login');
+    $this->assertGuest();
+
+    $root = User::where('name', config('auth.root.username'))->firstOrFail();
+    $this->assertDatabaseHas('login_verification_codes', ['user_id' => $root->id]);
 });
 
 test('a wrong password is rejected', function () {

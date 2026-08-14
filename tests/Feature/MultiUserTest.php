@@ -60,13 +60,20 @@ test('root can reset a user\'s password and they can log in with it', function (
 
     $this->post('/logout');
 
-    $this->post('/login', [
+    // Дальше — второй фактор (см. TwoFactorLoginTest.php), здесь проверяем
+    // только то, что относится к самому сбросу пароля: новый пароль проходит
+    // проверку учётных данных (шаг 1), а не блокируется как неверный.
+    $response = $this->post('/login', [
         'username' => 'ada2',
         'password' => 'a brand new password',
-    ])->assertRedirect('/');
+    ]);
+
+    $response->assertRedirect('/login');
+    $this->assertGuest();
+    $this->assertDatabaseHas('login_verification_codes', ['user_id' => $created['user']['id']]);
 });
 
-test('a password reset must be at least 8 characters', function () {
+test('a password reset must be at least 9 characters', function () {
     $this->actingAs($this->root);
 
     $created = $this->postJson('/api/admin/users', [
@@ -77,7 +84,7 @@ test('a password reset must be at least 8 characters', function () {
     ])->json();
 
     $this->putJson("/api/admin/users/{$created['user']['id']}/password", [
-        'password' => 'short',
+        'password' => '12345678',
     ])->assertStatus(422);
 });
 

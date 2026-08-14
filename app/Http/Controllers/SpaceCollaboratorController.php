@@ -19,8 +19,17 @@ use Illuminate\Validation\ValidationException;
  */
 class SpaceCollaboratorController extends Controller
 {
-    public function index(Space $space): JsonResponse
+    public function index(Request $request, Space $space): JsonResponse
     {
+        ActivityLog::record(
+            $request->user(),
+            ActivityLog::ACTION_COLLABORATORS_VIEWED,
+            'space',
+            $space->id,
+            [],
+            $space->id,
+        );
+
         return response()->json(
             $space->collaborators()->get(['users.id', 'name', 'email'])
         );

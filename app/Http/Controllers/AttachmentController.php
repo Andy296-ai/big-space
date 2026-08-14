@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ActivityLog;
 use App\Models\Node;
 use App\Models\NodeAttachment;
 use App\Models\Space;
@@ -105,6 +106,7 @@ class AttachmentController extends Controller
 
     /** Отдаёт загруженный файл. Внешние ссылки скачивать нечего — они и так адрес. */
     public function download(
+        Request $request,
         Space $space,
         Node $node,
         NodeAttachment $attachment,
@@ -115,8 +117,22 @@ class AttachmentController extends Controller
         $disk = Storage::disk(NodeAttachment::DISK);
         abort_unless($disk->exists($attachment->path), 404);
 
+        self::logAccess($request, $space, $attachment, 'download');
+
         // Всегда как вложение: содержимое не должно исполняться в браузере.
         return $disk->download($attachment->path, $attachment->label ?: basename($attachment->path));
+    }
+
+    private static function logAccess(Request $request, Space $space, NodeAttachment $attachment, string $mode): void
+    {
+        ActivityLog::record(
+            $request->user(),
+            ActivityLog::ACTION_ATTACHMENT_ACCESSED,
+            'attachment',
+            $attachment->id,
+            ['mode' => $mode, 'label' => $attachment->label],
+            $space->id,
+        );
     }
 
     public function destroy(Space $space, Node $node, NodeAttachment $attachment): JsonResponse
@@ -137,13 +153,15 @@ class AttachmentController extends Controller
      * как у многих записей экрана, — вообще старта воспроизведения). Обычный
      * StreamedResponse Range целиком игнорирует и всегда отдаёт файл с начала.
      */
-    public function preview(Space $space, Node $node, NodeAttachment $attachment): BinaryFileResponse
+    public function preview(Request $request, Space $space, Node $node, NodeAttachment $attachment): BinaryFileResponse
     {
         self::guard($space, $node, $attachment);
         abort_unless($attachment->previewable, 404);
 
         $disk = Storage::disk(NodeAttachment::DISK);
         abort_unless($disk->exists($attachment->path), 404);
+
+        self::logAccess($request, $space, $attachment, 'preview');
 
         $mime = self::PREVIEW_MIME_TYPES[strtolower($attachment->format)] ?? 'application/octet-stream';
 
@@ -154,13 +172,15 @@ class AttachmentController extends Controller
     }
 
     /** Сырое содержимое текстового вложения — для редактора на фронте. */
-    public function content(Space $space, Node $node, NodeAttachment $attachment): JsonResponse
+    public function content(Request $request, Space $space, Node $node, NodeAttachment $attachment): JsonResponse
     {
         self::guard($space, $node, $attachment);
         abort_unless($attachment->editable, 404);
 
         $disk = Storage::disk(NodeAttachment::DISK);
         abort_unless($disk->exists($attachment->path), 404);
+
+        self::logAccess($request, $space, $attachment, 'content');
 
         return response()->json(['content' => $disk->get($attachment->path)]);
     }

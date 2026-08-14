@@ -25,7 +25,7 @@ const validationError = computed(() => {
         return null;
     }
 
-    if (password.value.length < 8) {
+    if (password.value.length < 9) {
         return t.value.passwordTooShort;
     }
 
@@ -37,7 +37,7 @@ const validationError = computed(() => {
 });
 
 const canSubmit = computed(
-    () => password.value.length >= 8 && validationError.value === null,
+    () => password.value.length >= 9 && validationError.value === null,
 );
 
 function handleSubmit() {

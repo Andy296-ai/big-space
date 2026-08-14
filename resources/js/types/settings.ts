@@ -256,6 +256,15 @@ export type TranslationKeys = {
     rememberMe: string;
     invalidCredentials: string;
     tooManyAttempts: string;
+    codeLabel: string;
+    codeSentTo: string;
+    verifyCodeAction: string;
+    verifyingCode: string;
+    resendCodeAction: string;
+    codeInvalid: string;
+    codeExpired: string;
+    codeResent: string;
+    backToLoginAction: string;
     structureLabel: string;
     structureHint: string;
     structureTree: string;
@@ -521,9 +530,9 @@ export const translations: Record<Language, TranslationKeys> = {
         notificationAccessGranted:
             '{owner} gave you {role} access to "{space}"',
         resetPasswordTitle: 'Reset password',
-        newPasswordLabel: 'New password (min. 8 characters)',
+        newPasswordLabel: 'New password (min. 9 characters)',
         confirmPasswordLabel: 'Confirm password',
-        passwordTooShort: 'Password must be at least 8 characters.',
+        passwordTooShort: 'Password must be at least 9 characters.',
         passwordsDontMatch: 'Passwords do not match.',
         genericErrorPrefix: 'Error: {error}',
         settingsTitle: 'System Settings',
@@ -542,6 +551,15 @@ export const translations: Record<Language, TranslationKeys> = {
         rememberMe: 'Stay signed in',
         invalidCredentials: 'Wrong login or password.',
         tooManyAttempts: 'Too many attempts. Please wait a minute.',
+        codeLabel: 'Verification code',
+        codeSentTo: 'A 6-digit code was sent to {email}.',
+        verifyCodeAction: 'Verify',
+        verifyingCode: 'Verifying...',
+        resendCodeAction: 'Resend code',
+        codeInvalid: 'Wrong or expired code.',
+        codeExpired: 'This code has expired. Please sign in again.',
+        codeResent: 'A new code has been sent.',
+        backToLoginAction: 'Back to sign in',
         structureLabel: 'Space Structure',
         structureHint:
             'Applies to the current space only — your other spaces keep their own structure.',
@@ -820,9 +838,9 @@ export const translations: Record<Language, TranslationKeys> = {
         notificationAccessGranted:
             '{owner} открыл(а) вам доступ ({role}) к «{space}»',
         resetPasswordTitle: 'Сброс пароля',
-        newPasswordLabel: 'Новый пароль (минимум 8 символов)',
+        newPasswordLabel: 'Новый пароль (минимум 9 символов)',
         confirmPasswordLabel: 'Повторите пароль',
-        passwordTooShort: 'Пароль должен быть не короче 8 символов.',
+        passwordTooShort: 'Пароль должен быть не короче 9 символов.',
         passwordsDontMatch: 'Пароли не совпадают.',
         genericErrorPrefix: 'Ошибка: {error}',
         settingsTitle: 'Настройки системы',
@@ -841,6 +859,15 @@ export const translations: Record<Language, TranslationKeys> = {
         rememberMe: 'Не выходить',
         invalidCredentials: 'Неверный логин или пароль.',
         tooManyAttempts: 'Слишком много попыток. Подождите минуту.',
+        codeLabel: 'Код подтверждения',
+        codeSentTo: 'Шестизначный код отправлен на {email}.',
+        verifyCodeAction: 'Подтвердить',
+        verifyingCode: 'Проверка...',
+        resendCodeAction: 'Отправить код ещё раз',
+        codeInvalid: 'Неверный или истёкший код.',
+        codeExpired: 'Срок действия кода истёк. Войдите заново.',
+        codeResent: 'Новый код отправлен.',
+        backToLoginAction: 'Назад ко входу',
         structureLabel: 'Структура пространства',
         structureHint:
             'Относится только к текущему пространству — у остальных своя структура.',
@@ -1121,9 +1148,9 @@ export const translations: Record<Language, TranslationKeys> = {
         notificationAccessGranted:
             '{owner} ба шумо дастрасии {role} ба «{space}» дод',
         resetPasswordTitle: 'Бознишонии рамз',
-        newPasswordLabel: 'Рамзи нав (на кам аз 8 аломат)',
+        newPasswordLabel: 'Рамзи нав (на кам аз 9 аломат)',
         confirmPasswordLabel: 'Рамзро такрор кунед',
-        passwordTooShort: 'Рамз бояд на кам аз 8 аломат бошад.',
+        passwordTooShort: 'Рамз бояд на кам аз 9 аломат бошад.',
         passwordsDontMatch: 'Рамзҳо мувофиқат намекунанд.',
         genericErrorPrefix: 'Хато: {error}',
         settingsTitle: 'Танзимоти система',
@@ -1142,6 +1169,15 @@ export const translations: Record<Language, TranslationKeys> = {
         rememberMe: 'Дар система мондан',
         invalidCredentials: 'Логин ё рамз нодуруст.',
         tooManyAttempts: 'Кӯшишҳо аз ҳад зиёд. Як дақиқа интизор шавед.',
+        codeLabel: 'Коди тасдиқ',
+        codeSentTo: 'Коди 6-рақама ба {email} фиристода шуд.',
+        verifyCodeAction: 'Тасдиқ кардан',
+        verifyingCode: 'Санҷиш...',
+        resendCodeAction: 'Кодро дубора фиристодан',
+        codeInvalid: 'Код нодуруст ё мӯҳлаташ гузаштааст.',
+        codeExpired: 'Мӯҳлати код гузашт. Аз нав ворид шавед.',
+        codeResent: 'Коди нав фиристода шуд.',
+        backToLoginAction: 'Бозгашт ба воридшавӣ',
         structureLabel: 'Сохтори фазо',
         structureHint:
             'Танҳо ба фазои ҷорӣ дахл дорад — дигар фазоҳо сохтори худро нигоҳ медоранд.',
@@ -1422,9 +1458,9 @@ export const translations: Record<Language, TranslationKeys> = {
         notificationAccessGranted:
             '{owner} به شما دسترسی {role} به «{space}» داد',
         resetPasswordTitle: 'بازنشانی رمز عبور',
-        newPasswordLabel: 'رمز عبور جدید (حداقل ۸ نویسه)',
+        newPasswordLabel: 'رمز عبور جدید (حداقل ۹ نویسه)',
         confirmPasswordLabel: 'تکرار رمز عبور',
-        passwordTooShort: 'رمز عبور باید حداقل ۸ نویسه باشد.',
+        passwordTooShort: 'رمز عبور باید حداقل ۹ نویسه باشد.',
         passwordsDontMatch: 'رمزهای عبور یکسان نیستند.',
         genericErrorPrefix: 'خطا: {error}',
         settingsTitle: 'تنظیمات سیستم',
@@ -1443,6 +1479,15 @@ export const translations: Record<Language, TranslationKeys> = {
         rememberMe: 'مرا به خاطر بسپار',
         invalidCredentials: 'نام کاربری یا رمز عبور نادرست است.',
         tooManyAttempts: 'تلاش‌های بیش از حد. یک دقیقه صبر کنید.',
+        codeLabel: 'کد تأیید',
+        codeSentTo: 'یک کد ۶ رقمی به {email} ارسال شد.',
+        verifyCodeAction: 'تأیید',
+        verifyingCode: 'در حال بررسی...',
+        resendCodeAction: 'ارسال دوباره کد',
+        codeInvalid: 'کد نادرست یا منقضی شده است.',
+        codeExpired: 'اعتبار این کد به پایان رسیده. دوباره وارد شوید.',
+        codeResent: 'کد جدیدی ارسال شد.',
+        backToLoginAction: 'بازگشت به ورود',
         structureLabel: 'ساختار فضا',
         structureHint:
             'فقط بر فضای فعلی اعمال می‌شود — فضاهای دیگر ساختار خود را حفظ می‌کنند.',

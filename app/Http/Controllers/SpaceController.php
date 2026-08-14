@@ -109,8 +109,17 @@ class SpaceController extends Controller
      * Выгружает пространство целиком. Узлы нумеруются ключами внутри файла,
      * а не id из базы — иначе импорт в другую базу пришлось бы подгонять.
      */
-    public function export(Space $space): JsonResponse
+    public function export(Request $request, Space $space): JsonResponse
     {
+        ActivityLog::record(
+            $request->user(),
+            ActivityLog::ACTION_SPACE_EXPORTED,
+            'space',
+            $space->id,
+            [],
+            $space->id,
+        );
+
         $nodes = Node::where('space_id', $space->id)
             ->with('attachments')
             ->orderBy('id')

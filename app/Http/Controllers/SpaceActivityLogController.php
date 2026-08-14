@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ActivityLog;
 use App\Models\Space;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 /**
  * Лента изменений для владельца пространства — то же самое, что видит root
@@ -15,8 +16,10 @@ class SpaceActivityLogController extends Controller
 {
     private const PER_PAGE = 100;
 
-    public function index(Space $space): JsonResponse
+    public function index(Request $request, Space $space): JsonResponse
     {
+        ActivityLog::record($request->user(), ActivityLog::ACTION_ACTIVITY_LOG_VIEWED, spaceId: $space->id);
+
         $entries = ActivityLog::with('actor:id,name,email')
             ->where('space_id', $space->id)
             ->latest('created_at')
