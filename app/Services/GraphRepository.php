@@ -229,8 +229,16 @@ class GraphRepository
             return;
         }
 
+        // Один UPDATE на новое значение depth, а не на узел — сдвиг обычно
+        // переносит целое поддерево на одну и ту же дельту, так что группы
+        // получаются намного меньше $depths целиком.
+        $idsByDepth = [];
         foreach ($depths as $id => $depth) {
-            Node::where('space_id', $spaceId)->where('id', $id)->update(['depth' => $depth]);
+            $idsByDepth[$depth][] = $id;
+        }
+
+        foreach ($idsByDepth as $depth => $ids) {
+            Node::where('space_id', $spaceId)->whereIn('id', $ids)->update(['depth' => $depth]);
         }
 
         // Query-builder update() не будит модельные события — сигналим о живом обновлении сами.
@@ -450,12 +458,15 @@ class GraphRepository
                 continue; // Not a root
             }
 
+            // Сначала собираем всё поддерево в памяти, потом один UPDATE на
+            // корень — вместо запроса на каждый узел по ходу обхода.
+            $subtreeIds = [];
             $queue = [$id];
             $visited[$id] = true;
 
             while (! empty($queue)) {
                 $current = array_pop($queue);
-                Node::where('id', $current)->update(['tree_root_id' => $id]);
+                $subtreeIds[] = $current;
 
                 if (isset($childrenOf[$current])) {
                     foreach ($childrenOf[$current] as $childId) {
@@ -466,6 +477,8 @@ class GraphRepository
                     }
                 }
             }
+
+            Node::whereIn('id', $subtreeIds)->update(['tree_root_id' => $id]);
         }
 
         // Fallback for orphaned/cyclic nodes
@@ -517,26 +530,33 @@ class GraphRepository
         $originals = Node::whereIn('id', $order)->get()->keyBy('id');
         $sourceRootModel = $originals[$sourceRoot->id];
 
-        $newRootPos = $newParent
-            ? LayoutEngine::placeChild($newParent, $newParent->childEdges()->count())
-            : [
-                'x' => $sourceRootModel->pos_x + 120,
-                'y' => $sourceRootModel->pos_y + 120,
-            ];
-
-        $deltaX = $newRootPos['x'] - $sourceRootModel->pos_x;
-        $deltaY = $newRootPos['y'] - $sourceRootModel->pos_y;
-
         return DB::transaction(function () use (
             $space,
             $newParent,
             $order,
             $originals,
+            $sourceRootModel,
             $relativeDepth,
             $internalEdges,
-            $deltaX,
-            $deltaY,
         ) {
+            // Блокируем нового родителя на время чтения числа детей — та же
+            // гонка позиций, что и в addChild(): без лока два параллельных
+            // copy() под один родитель читают одинаковый count().
+            $lockedParent = $newParent
+                ? Node::where('id', $newParent->id)->lockForUpdate()->firstOrFail()
+                : null;
+
+            $newRootPos = $lockedParent
+                ? LayoutEngine::placeChild($lockedParent, $lockedParent->childEdges()->count())
+                : [
+                    'x' => $sourceRootModel->pos_x + 120,
+                    'y' => $sourceRootModel->pos_y + 120,
+                ];
+
+            $deltaX = $newRootPos['x'] - $sourceRootModel->pos_x;
+            $deltaY = $newRootPos['y'] - $sourceRootModel->pos_y;
+
+            $newParent = $lockedParent;
             $idMap = [];
             $newRootId = null;
 

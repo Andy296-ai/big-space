@@ -153,35 +153,44 @@ class GraphController extends Controller
             'shape' => ['nullable', Rule::in(Node::SHAPES)],
         ]);
 
-        $childCount = $parent->childEdges()->count();
-        $pos = LayoutEngine::placeChild($parent, $childCount);
+        $child = DB::transaction(function () use ($space, $parent, $validated) {
+            // Блокируем родителя на время чтения числа детей — иначе два
+            // параллельных addChild() к одному родителю читают одинаковый
+            // count() и ставят новые узлы друг на друга.
+            $lockedParent = Node::where('id', $parent->id)->lockForUpdate()->firstOrFail();
 
-        // Дерево может задать свою форму/цвет по умолчанию для новых узлов
-        // (панель настроек дерева) — они на корневом узле, не на родителе.
-        $treeRoot = ($parent->tree_root_id ? Node::find($parent->tree_root_id) : null) ?? $parent;
+            $childCount = $lockedParent->childEdges()->count();
+            $pos = LayoutEngine::placeChild($lockedParent, $childCount);
 
-        $child = Node::create([
-            'space_id' => $space->id,
-            'title' => $validated['title'],
-            'description' => $validated['description'] ?? '',
-            'color' => $validated['color'] ?? $treeRoot->default_color ?? '',
-            'tags' => $validated['tags'] ?? '',
-            'shape' => $validated['shape'] ?? $treeRoot->default_shape ?? 'circle',
-            'map_lat' => $validated['map_lat'] ?? null,
-            'map_lon' => $validated['map_lon'] ?? null,
-            'map_title' => $validated['map_title'] ?? null,
-            'pos_x' => $pos['x'],
-            'pos_y' => $pos['y'],
-            'pos_z' => $pos['z'],
-            'depth' => $parent->depth + 1,
-            'tree_root_id' => $parent->tree_root_id ?? $parent->id,
-        ]);
+            // Дерево может задать свою форму/цвет по умолчанию для новых узлов
+            // (панель настроек дерева) — они на корневом узле, не на родителе.
+            $treeRoot = ($lockedParent->tree_root_id ? Node::find($lockedParent->tree_root_id) : null) ?? $lockedParent;
 
-        Edge::create([
-            'space_id' => $space->id,
-            'parent_id' => $parent->id,
-            'child_id' => $child->id,
-        ]);
+            $child = Node::create([
+                'space_id' => $space->id,
+                'title' => $validated['title'],
+                'description' => $validated['description'] ?? '',
+                'color' => $validated['color'] ?? $treeRoot->default_color ?? '',
+                'tags' => $validated['tags'] ?? '',
+                'shape' => $validated['shape'] ?? $treeRoot->default_shape ?? 'circle',
+                'map_lat' => $validated['map_lat'] ?? null,
+                'map_lon' => $validated['map_lon'] ?? null,
+                'map_title' => $validated['map_title'] ?? null,
+                'pos_x' => $pos['x'],
+                'pos_y' => $pos['y'],
+                'pos_z' => $pos['z'],
+                'depth' => $lockedParent->depth + 1,
+                'tree_root_id' => $lockedParent->tree_root_id ?? $lockedParent->id,
+            ]);
+
+            Edge::create([
+                'space_id' => $space->id,
+                'parent_id' => $lockedParent->id,
+                'child_id' => $child->id,
+            ]);
+
+            return $child;
+        });
 
         ActivityLog::record(
             $request->user(),
@@ -422,43 +431,57 @@ class GraphController extends Controller
             'child_id' => ['required', Rule::exists('nodes', 'id')->where('space_id', $space->id)],
         ]);
 
-        $violation = $this->graphRepo->validateLink($space, $validated['parent_id'], $validated['child_id']);
+        $result = DB::transaction(function () use ($space, $validated) {
+            // Лочим само пространство на всё время проверки+применения —
+            // иначе два параллельных link() в одном LEVELED-пространстве
+            // планируют сдвиг уровней по одному и тому же устаревшему
+            // снимку глубин и молча расходятся с реальным состоянием.
+            Space::where('id', $space->id)->lockForUpdate()->first();
 
-        if ($violation !== null) {
+            $violation = $this->graphRepo->validateLink($space, $validated['parent_id'], $validated['child_id']);
+
+            if ($violation !== null) {
+                return ['violation' => $violation];
+            }
+
+            // В уровневой структуре ребёнок должен оказаться ровно на уровень ниже:
+            // если это не так, пробуем сдвинуть его поддерево целиком.
+            $depthChanges = [];
+
+            if ($space->requiresAdjacentLevels()) {
+                $depthChanges = $this->graphRepo->planLevelShift($space, $validated['parent_id'], $validated['child_id']);
+
+                if ($depthChanges === null) {
+                    return ['violation' => 'level_gap'];
+                }
+            }
+
+            $this->graphRepo->applyDepths($space->id, $depthChanges);
+
+            $edge = Edge::firstOrCreate([
+                'space_id' => $space->id,
+                'parent_id' => $validated['parent_id'],
+                'child_id' => $validated['child_id'],
+            ]);
+
+            return ['edge' => $edge];
+        });
+
+        if (isset($result['violation'])) {
+            $violation = $result['violation'];
+
             return response()->json([
                 'reason' => $violation,
                 'error' => match ($violation) {
                     'self_link' => 'Cannot link a node to itself.',
                     'single_parent' => 'This space is a strict tree: the target node already has a parent.',
+                    'level_gap' => 'This space is leveled: the link would span more than one level.',
                     default => 'Cannot create link: adding this connection would create a cycle.',
                 },
             ], 422);
         }
 
-        // В уровневой структуре ребёнок должен оказаться ровно на уровень ниже:
-        // если это не так, пробуем сдвинуть его поддерево целиком.
-        $depthChanges = [];
-
-        if ($space->requiresAdjacentLevels()) {
-            $depthChanges = $this->graphRepo->planLevelShift($space, $validated['parent_id'], $validated['child_id']);
-
-            if ($depthChanges === null) {
-                return response()->json([
-                    'reason' => 'level_gap',
-                    'error' => 'This space is leveled: the link would span more than one level.',
-                ], 422);
-            }
-        }
-
-        $edge = DB::transaction(function () use ($space, $validated, $depthChanges) {
-            $this->graphRepo->applyDepths($space->id, $depthChanges);
-
-            return Edge::firstOrCreate([
-                'space_id' => $space->id,
-                'parent_id' => $validated['parent_id'],
-                'child_id' => $validated['child_id'],
-            ]);
-        });
+        $edge = $result['edge'];
 
         $this->graphRepo->updateTreeRootIds($space->id);
 

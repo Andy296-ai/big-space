@@ -31,7 +31,7 @@ Route::middleware('auth')->group(function () {
         // Spaces: список и создание видят всех пространств пользователя, а не чужих.
         Route::get('/spaces', [SpaceController::class, 'index']);
         Route::post('/spaces', [SpaceController::class, 'store']);
-        Route::post('/spaces/import', [SpaceController::class, 'import']);
+        Route::post('/spaces/import', [SpaceController::class, 'import'])->middleware('throttle:import');
         Route::get('/search', [SearchController::class, 'index'])->middleware('throttle:search');
 
         // Уведомления пользователя — доступ открыт в пространстве, кто-то

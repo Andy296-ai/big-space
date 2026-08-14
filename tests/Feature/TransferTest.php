@@ -143,3 +143,32 @@ test('guests cannot export or import', function () {
     $this->getJson("/api/spaces/{$space->id}/export")->assertStatus(401);
     $this->postJson('/api/spaces/import', [])->assertStatus(401);
 });
+
+test('import rejects an oversized file before running full validation', function () {
+    // Регрессия: раньше нижнее ограничение стояло только как правило 'max'
+    // рядом с полем nodes, но Laravel всё равно успевал развернуть
+    // wildcard-правила (nodes.*.key и т.п.) по каждому элементу — на
+    // нескольких тысячах узлов это упиралось в max_execution_time раньше,
+    // чем срабатывал сам max. Проверяем, что явный ручной count()-чек
+    // отсекает такой файл быстро, а не зависает.
+    $nodes = [];
+
+    for ($i = 1; $i <= 5001; $i++) {
+        $nodes[] = ['key' => $i, 'title' => "n{$i}"];
+    }
+
+    $payload = [
+        'format' => 'infinite-space/v1',
+        'space' => ['name' => 'Too Big'],
+        'nodes' => $nodes,
+        'edges' => [],
+    ];
+
+    $start = microtime(true);
+    $response = $this->postJson('/api/spaces/import', $payload);
+    $elapsed = microtime(true) - $start;
+
+    $response->assertStatus(422);
+    $response->assertJsonValidationErrors(['nodes']);
+    expect($elapsed)->toBeLessThan(5.0);
+});

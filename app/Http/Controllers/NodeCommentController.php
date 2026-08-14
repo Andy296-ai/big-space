@@ -32,6 +32,10 @@ class NodeCommentController extends Controller
     {
         abort_unless($node->space_id === $space->id, 404);
 
+        // Триммим ДО валидации: иначе строка из одних пробелов проходит
+        // required (он отвергает только null/пустую строку/пустой массив).
+        $request->merge(['body' => trim((string) $request->input('body', ''))]);
+
         $validated = $request->validate([
             'body' => 'required|string|max:2000',
         ]);

@@ -14,11 +14,17 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class SpaceController extends Controller
 {
     /** Метка формата: по ней импорт отличает свой файл от чужого. */
     public const EXPORT_FORMAT = 'infinite-space/v1';
+
+    /** С запасом сверх любого реалистичного пространства — не лимит на использование, а потолок против случайно/намеренно огромного файла. */
+    private const MAX_IMPORT_NODES = 5000;
+
+    private const MAX_IMPORT_EDGES = 20000;
 
     /** Свои пространства плюс те, что расшарили пользователю — чужое без шеринга (и Admin) сюда не попадает. */
     public function index(Request $request): JsonResponse
@@ -180,12 +186,26 @@ class SpaceController extends Controller
      */
     public function import(Request $request, GraphRepository $graphRepo, SpaceProvisioner $provisioner): JsonResponse
     {
+        // Проверяем размер ДО полной валидации: Laravel разворачивает
+        // wildcard-правила (nodes.*.key и т.п.) по каждому элементу массива
+        // независимо от других правил, так что 'nodes' => 'max:...' само по
+        // себе не спасает — на тысячах элементов сама валидация успевает
+        // упереться в max_execution_time раньше, чем сработает max. Считаем
+        // count() вручную, до вызова validate().
+        if (count((array) $request->input('nodes', [])) > self::MAX_IMPORT_NODES) {
+            throw ValidationException::withMessages(['nodes' => 'Too many nodes in the import file.']);
+        }
+
+        if (count((array) $request->input('edges', [])) > self::MAX_IMPORT_EDGES) {
+            throw ValidationException::withMessages(['edges' => 'Too many edges in the import file.']);
+        }
+
         $validated = $request->validate([
             'format' => ['required', Rule::in([self::EXPORT_FORMAT])],
             'space.name' => 'required|string|max:255',
             'space.description' => 'nullable|string',
             'space.structure' => ['nullable', Rule::in(Space::STRUCTURES)],
-            'nodes' => 'required|array|min:1',
+            'nodes' => 'required|array|min:1|max:'.self::MAX_IMPORT_NODES,
             'nodes.*.key' => 'required|integer',
             'nodes.*.title' => 'nullable|string|max:255',
             'nodes.*.description' => 'nullable|string',
@@ -201,7 +221,7 @@ class SpaceController extends Controller
             'nodes.*.attachments.*.label' => 'nullable|string|max:255',
             'nodes.*.attachments.*.url' => 'required|string|max:2048',
             'nodes.*.attachments.*.format' => 'nullable|string|max:8',
-            'edges' => 'present|array',
+            'edges' => 'present|array|max:'.self::MAX_IMPORT_EDGES,
             'edges.*.parent' => 'required|integer',
             'edges.*.child' => 'required|integer',
         ]);
