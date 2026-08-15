@@ -66,6 +66,14 @@ class ActivityLog extends Model
 
     public const ACTION_LOG_PRUNED = 'activity_log.pruned';
 
+    public const ACTION_TEAM_CREATED = 'team.created';
+
+    public const ACTION_TEAM_DELETED = 'team.deleted';
+
+    public const ACTION_TEAM_MEMBER_ADDED = 'team.member_added';
+
+    public const ACTION_TEAM_MEMBER_REMOVED = 'team.member_removed';
+
     protected $fillable = [
         'actor_id',
         'space_id',

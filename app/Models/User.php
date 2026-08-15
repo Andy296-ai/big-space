@@ -75,4 +75,27 @@ class User extends Authenticatable
             ->withPivot('role')
             ->withTimestamps();
     }
+
+    /**
+     * Команды (для мессенджера), в которые пользователя добавил root.
+     *
+     * @return BelongsToMany<Team, $this>
+     */
+    public function teams(): BelongsToMany
+    {
+        return $this->belongsToMany(Team::class, 'team_user')->withTimestamps();
+    }
+
+    /**
+     * Разговоры в мессенджере, где пользователь — участник.
+     *
+     * @return BelongsToMany<Conversation, $this, ConversationParticipantPivot>
+     */
+    public function conversations(): BelongsToMany
+    {
+        return $this->belongsToMany(Conversation::class, 'conversation_participants')
+            ->using(ConversationParticipantPivot::class)
+            ->withPivot('last_read_at')
+            ->withTimestamps();
+    }
 }

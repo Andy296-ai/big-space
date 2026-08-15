@@ -483,6 +483,40 @@ export type TranslationKeys = {
     themeMidnight: string;
     themeCyberpunk: string;
     themeLight: string;
+    messengerAction: string;
+    messengerTitle: string;
+    messengerGlobalSection: string;
+    messengerTeamsSection: string;
+    messengerDirectSection: string;
+    messengerGlobalChat: string;
+    messengerNoTeams: string;
+    messengerNoDirect: string;
+    messengerNoMessagesYet: string;
+    messengerStartDirectAction: string;
+    messengerSearchTeammates: string;
+    messengerNoTeammatesFound: string;
+    messengerSelectConversation: string;
+    messengerEmptyThread: string;
+    messengerComposerPlaceholder: string;
+    messengerSendAction: string;
+    messengerAttachAction: string;
+    messengerUploadError: string;
+    messengerAttachmentPreviewLabel: string;
+    messengerRecordVoiceAction: string;
+    messengerRecordVideoAction: string;
+    messengerDiscardRecording: string;
+    messengerMediaPermissionError: string;
+    teamManagerAction: string;
+    teamManagerTitle: string;
+    teamNameLabel: string;
+    teamNamePlaceholder: string;
+    teamManagerCreateAction: string;
+    teamManagerEmpty: string;
+    teamManagerMembersLabel: string;
+    teamManagerAddMemberAction: string;
+    teamManagerRemoveMemberAction: string;
+    teamManagerNoMembers: string;
+    teamManagerLoadError: string;
 };
 
 export const translations: Record<Language, TranslationKeys> = {
@@ -792,6 +826,42 @@ export const translations: Record<Language, TranslationKeys> = {
         themeMidnight: 'Midnight Blue',
         themeCyberpunk: 'Cyberpunk Violet',
         themeLight: 'Light Clean',
+        messengerAction: 'Messenger',
+        messengerTitle: 'Messages',
+        messengerGlobalSection: 'Everyone',
+        messengerTeamsSection: 'Teams',
+        messengerDirectSection: 'Direct',
+        messengerGlobalChat: 'Global chat',
+        messengerNoTeams: 'You are not in any team yet.',
+        messengerNoDirect: 'No direct messages yet.',
+        messengerNoMessagesYet: 'No messages yet',
+        messengerStartDirectAction: 'New direct message',
+        messengerSearchTeammates: 'Search teammates',
+        messengerNoTeammatesFound: 'No teammates found.',
+        messengerSelectConversation: 'Select a conversation to start reading',
+        messengerEmptyThread: 'No messages yet — say hello',
+        messengerComposerPlaceholder: 'Write a message…',
+        messengerSendAction: 'Send',
+        messengerAttachAction: 'Attach a file',
+        messengerUploadError:
+            "Couldn't send the file. Check its size and format.",
+        messengerAttachmentPreviewLabel: 'Attachment',
+        messengerRecordVoiceAction: 'Record a voice message',
+        messengerRecordVideoAction: 'Record a video message',
+        messengerDiscardRecording: 'Discard',
+        messengerMediaPermissionError:
+            "Couldn't access the camera or microphone. Check your browser permissions.",
+        teamManagerAction: 'Manage teams',
+        teamManagerTitle: 'Team management',
+        teamNameLabel: 'Team name',
+        teamNamePlaceholder: 'e.g. Design',
+        teamManagerCreateAction: 'Create team',
+        teamManagerEmpty: 'No teams yet.',
+        teamManagerMembersLabel: 'Members',
+        teamManagerAddMemberAction: 'Add',
+        teamManagerRemoveMemberAction: 'Remove from team',
+        teamManagerNoMembers: 'No members yet.',
+        teamManagerLoadError: 'Something went wrong. Please try again.',
     },
     ru: {
         currentSpace: 'Текущее пространство',
@@ -1102,6 +1172,42 @@ export const translations: Record<Language, TranslationKeys> = {
         themeMidnight: 'Полуночно-синяя',
         themeCyberpunk: 'Киберпанк (фиолетовая)',
         themeLight: 'Светлая лаконичная',
+        messengerAction: 'Мессенджер',
+        messengerTitle: 'Сообщения',
+        messengerGlobalSection: 'Все',
+        messengerTeamsSection: 'Команды',
+        messengerDirectSection: 'Личные',
+        messengerGlobalChat: 'Общий чат',
+        messengerNoTeams: 'Вы пока не состоите ни в одной команде.',
+        messengerNoDirect: 'Личных переписок пока нет.',
+        messengerNoMessagesYet: 'Пока нет сообщений',
+        messengerStartDirectAction: 'Новая личная переписка',
+        messengerSearchTeammates: 'Поиск по коллегам',
+        messengerNoTeammatesFound: 'Никого не нашли.',
+        messengerSelectConversation: 'Выберите переписку, чтобы начать читать',
+        messengerEmptyThread: 'Пока нет сообщений — напишите первым',
+        messengerComposerPlaceholder: 'Написать сообщение…',
+        messengerSendAction: 'Отправить',
+        messengerAttachAction: 'Прикрепить файл',
+        messengerUploadError:
+            'Не удалось отправить файл. Проверьте его размер и формат.',
+        messengerAttachmentPreviewLabel: 'Вложение',
+        messengerRecordVoiceAction: 'Записать голосовое сообщение',
+        messengerRecordVideoAction: 'Записать видеосообщение',
+        messengerDiscardRecording: 'Удалить запись',
+        messengerMediaPermissionError:
+            'Не удалось получить доступ к камере или микрофону. Проверьте разрешения браузера.',
+        teamManagerAction: 'Управление командами',
+        teamManagerTitle: 'Управление командами',
+        teamNameLabel: 'Название команды',
+        teamNamePlaceholder: 'напр. Дизайн',
+        teamManagerCreateAction: 'Создать команду',
+        teamManagerEmpty: 'Пока нет ни одной команды.',
+        teamManagerMembersLabel: 'Участники',
+        teamManagerAddMemberAction: 'Добавить',
+        teamManagerRemoveMemberAction: 'Убрать из команды',
+        teamManagerNoMembers: 'Пока нет участников.',
+        teamManagerLoadError: 'Что-то пошло не так. Попробуйте ещё раз.',
     },
     tg: {
         currentSpace: 'Фазои ҷорӣ',
@@ -1412,6 +1518,43 @@ export const translations: Record<Language, TranslationKeys> = {
         themeMidnight: 'Нимаи шаб',
         themeCyberpunk: 'Киберпанк',
         themeLight: 'Равшан',
+        messengerAction: 'Мессенҷер',
+        messengerTitle: 'Паёмҳо',
+        messengerGlobalSection: 'Ҳама',
+        messengerTeamsSection: 'Дастаҳо',
+        messengerDirectSection: 'Шахсӣ',
+        messengerGlobalChat: 'Чати умумӣ',
+        messengerNoTeams: 'Шумо ҳанӯз узви ягон даста нестед.',
+        messengerNoDirect: 'Ҳанӯз мукотибаи шахсӣ нест.',
+        messengerNoMessagesYet: 'Ҳанӯз паём нест',
+        messengerStartDirectAction: 'Мукотибаи нави шахсӣ',
+        messengerSearchTeammates: 'Ҷустуҷӯи ҳамкорон',
+        messengerNoTeammatesFound: 'Ҳеҷ кас ёфт нашуд.',
+        messengerSelectConversation:
+            'Мукотибаро интихоб кунед, то хондан оғоз шавад',
+        messengerEmptyThread: 'Ҳанӯз паём нест — аввалин шуда нависед',
+        messengerComposerPlaceholder: 'Паём нависед…',
+        messengerSendAction: 'Фиристодан',
+        messengerAttachAction: 'Замима кардани файл',
+        messengerUploadError:
+            'Файл фиристода нашуд. Андоза ва формати онро тафтиш кунед.',
+        messengerAttachmentPreviewLabel: 'Замима',
+        messengerRecordVoiceAction: 'Сабти паёми овозӣ',
+        messengerRecordVideoAction: 'Сабти паёми видеоӣ',
+        messengerDiscardRecording: 'Нест кардани сабт',
+        messengerMediaPermissionError:
+            'Дастрасӣ ба камера ё микрофон ғайриимкон аст. Иҷозатҳои браузерро тафтиш кунед.',
+        teamManagerAction: 'Идоракунии дастаҳо',
+        teamManagerTitle: 'Идоракунии дастаҳо',
+        teamNameLabel: 'Номи даста',
+        teamNamePlaceholder: 'мас. Дизайн',
+        teamManagerCreateAction: 'Сохтани даста',
+        teamManagerEmpty: 'Ҳанӯз ягон даста нест.',
+        teamManagerMembersLabel: 'Аъзоён',
+        teamManagerAddMemberAction: 'Илова кардан',
+        teamManagerRemoveMemberAction: 'Бартараф аз даста',
+        teamManagerNoMembers: 'Ҳанӯз аъзо нест.',
+        teamManagerLoadError: 'Хатоги рӯй дод. Бори дигар кӯшиш кунед.',
     },
     fa: {
         currentSpace: 'فضای فعلی',
@@ -1718,5 +1861,41 @@ export const translations: Record<Language, TranslationKeys> = {
         themeMidnight: 'نیمه‌شب آبی',
         themeCyberpunk: 'سایبرپانک بنفش',
         themeLight: 'روشن ساده',
+        messengerAction: 'پیام‌رسان',
+        messengerTitle: 'پیام‌ها',
+        messengerGlobalSection: 'همه',
+        messengerTeamsSection: 'تیم‌ها',
+        messengerDirectSection: 'مستقیم',
+        messengerGlobalChat: 'گفتگوی عمومی',
+        messengerNoTeams: 'شما هنوز عضو هیچ تیمی نیستید.',
+        messengerNoDirect: 'هنوز پیام مستقیمی وجود ندارد.',
+        messengerNoMessagesYet: 'هنوز پیامی نیست',
+        messengerStartDirectAction: 'پیام مستقیم جدید',
+        messengerSearchTeammates: 'جستجوی همکاران',
+        messengerNoTeammatesFound: 'کسی پیدا نشد.',
+        messengerSelectConversation: 'برای شروع خواندن یک گفتگو را انتخاب کنید',
+        messengerEmptyThread: 'هنوز پیامی نیست — شروع کنید',
+        messengerComposerPlaceholder: 'پیامی بنویسید…',
+        messengerSendAction: 'ارسال',
+        messengerAttachAction: 'پیوست فایل',
+        messengerUploadError:
+            'ارسال فایل ناموفق بود. اندازه و فرمت آن را بررسی کنید.',
+        messengerAttachmentPreviewLabel: 'پیوست',
+        messengerRecordVoiceAction: 'ضبط پیام صوتی',
+        messengerRecordVideoAction: 'ضبط پیام ویدیویی',
+        messengerDiscardRecording: 'حذف ضبط',
+        messengerMediaPermissionError:
+            'دسترسی به دوربین یا میکروفون ممکن نشد. مجوزهای مرورگر را بررسی کنید.',
+        teamManagerAction: 'مدیریت تیم‌ها',
+        teamManagerTitle: 'مدیریت تیم‌ها',
+        teamNameLabel: 'نام تیم',
+        teamNamePlaceholder: 'مثلاً طراحی',
+        teamManagerCreateAction: 'ایجاد تیم',
+        teamManagerEmpty: 'هنوز هیچ تیمی وجود ندارد.',
+        teamManagerMembersLabel: 'اعضا',
+        teamManagerAddMemberAction: 'افزودن',
+        teamManagerRemoveMemberAction: 'حذف از تیم',
+        teamManagerNoMembers: 'هنوز عضوی نیست.',
+        teamManagerLoadError: 'خطایی رخ داد. دوباره تلاش کنید.',
     },
 };

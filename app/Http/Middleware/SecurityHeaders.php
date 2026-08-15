@@ -28,7 +28,13 @@ class SecurityHeaders
             'Permissions-Policy',
             'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
         );
-        $response->headers->set('Content-Security-Policy', $this->contentSecurityPolicy($nonce));
+        // Не перетираем CSP, если его уже явно выставил сам контроллер (см.
+        // MessageAttachmentController::preview() — строгий "sandbox" для
+        // HTML-вложений мессенджера): тот случай сознательно строже общего
+        // CSP приложения, а не дополняет его.
+        if (! $response->headers->has('Content-Security-Policy')) {
+            $response->headers->set('Content-Security-Policy', $this->contentSecurityPolicy($nonce));
+        }
 
         // HSTS имеет смысл только поверх HTTPS — на голом http:// (как сейчас на
         // localhost) браузер его всё равно игнорирует, но незачем светить лишний

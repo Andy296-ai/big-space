@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Events\SpaceUpdated;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
+use App\Models\Conversation;
 use App\Models\Node;
 use App\Models\Space;
 use App\Models\User;
@@ -69,6 +70,9 @@ class UserController extends Controller
                 'linked_user_id' => $user->id,
             ]);
             $node->update(['tree_root_id' => $node->id]);
+
+            // Каждый новый пользователь сразу видит общий чат мессенджера.
+            Conversation::where('type', Conversation::TYPE_GLOBAL)->first()?->participants()->attach($user->id);
 
             return [$user, $node];
         });

@@ -66,5 +66,9 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('import', fn (Request $request) => Limit::perMinute(5)->by($request->user()?->id ?: $request->ip()));
 
         RateLimiter::for('admin-users', fn (Request $request) => Limit::perMinute(20)->by($request->user()?->id ?: $request->ip()));
+
+        // Комментарии к узлам сегодня вообще без лимита — для чата это
+        // не годится, у него принципиально больше объём сообщений в минуту.
+        RateLimiter::for('messages', fn (Request $request) => Limit::perMinute(60)->by($request->user()?->id ?: $request->ip()));
     }
 }

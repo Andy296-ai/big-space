@@ -30,3 +30,16 @@ Broadcast::channel('space.{spaceId}.presence', function (User $user, int $spaceI
 
     return ['id' => $user->id, 'name' => $user->name];
 });
+
+/**
+ * Presence-канал на всё приложение, не на пространство — кто сейчас в
+ * сети, для точки online/offline у личных переписок в мессенджере. Любой
+ * аутентифицированный пользователь имеет право в нём находиться (в отличие
+ * от space.{id}.presence, тут нет отдельного ресурса, к которому проверять
+ * доступ — сам факт быть залогиненным им и является).
+ *
+ * @return array{id: int, name: string}
+ */
+Broadcast::channel('messenger.presence', function (User $user) {
+    return ['id' => $user->id, 'name' => $user->name];
+});

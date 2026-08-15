@@ -1,10 +1,16 @@
 <?php
 
 use App\Http\Controllers\Admin\ActivityLogController;
+use App\Http\Controllers\Admin\TeamController;
+use App\Http\Controllers\Admin\TeamMembershipController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\AttachmentController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\DirectConversationController;
 use App\Http\Controllers\GraphController;
+use App\Http\Controllers\MessageAttachmentController;
+use App\Http\Controllers\MessageController;
+use App\Http\Controllers\MessengerController;
 use App\Http\Controllers\NodeCommentController;
 use App\Http\Controllers\NodeTreeSettingsController;
 use App\Http\Controllers\NotificationController;
@@ -40,6 +46,21 @@ Route::middleware('auth')->group(function () {
         Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
         Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
 
+        // Мессенджер — общий на всех пользователей вне зависимости от пространств.
+        Route::prefix('messenger')->group(function () {
+            Route::get('/summary', [MessengerController::class, 'summary']);
+            Route::get('/teammates', [MessengerController::class, 'teammates']);
+            Route::post('/direct/{target}', [DirectConversationController::class, 'store'])->middleware('throttle:messages');
+
+            Route::middleware('can:access,conversation')->prefix('conversations/{conversation}')->group(function () {
+                Route::get('/messages', [MessageController::class, 'index']);
+                Route::post('/messages', [MessageController::class, 'store'])->middleware('throttle:messages');
+                Route::post('/read', [MessageController::class, 'markRead']);
+                Route::get('/messages/{message}/attachment/download', [MessageAttachmentController::class, 'download']);
+                Route::get('/messages/{message}/attachment/preview', [MessageAttachmentController::class, 'preview']);
+            });
+        });
+
         // Пользователи — узлы в Admin-пространстве; управляет только root.
         Route::middleware('throttle:admin-users')->group(function () {
             Route::post('/admin/users', [UserController::class, 'store']);
@@ -48,6 +69,16 @@ Route::middleware('auth')->group(function () {
         });
         Route::get('/admin/activity-log', [ActivityLogController::class, 'index']);
         Route::get('/admin/activity-log/verify', [ActivityLogController::class, 'verify']);
+
+        // Команды для мессенджера — тоже управляет только root.
+        Route::middleware('throttle:admin-users')->prefix('admin/teams')->group(function () {
+            Route::get('/', [TeamController::class, 'index']);
+            Route::post('/', [TeamController::class, 'store']);
+            Route::put('/{team}', [TeamController::class, 'update']);
+            Route::delete('/{team}', [TeamController::class, 'destroy']);
+            Route::post('/{team}/members', [TeamMembershipController::class, 'store']);
+            Route::delete('/{team}/members/{member}', [TeamMembershipController::class, 'destroy']);
+        });
 
         // Всё, что привязано к конкретному пространству: владелец, root, или участник шеринга.
         Route::middleware('can:access,space')->prefix('spaces/{space}')->group(function () {

@@ -9,6 +9,15 @@ function readCookie(name: string): string | null {
 }
 
 /**
+ * Тот же CSRF-токен, что apiFetch подставляет сам — экспортирован отдельно
+ * для XMLHttpRequest-загрузок (см. MessengerThread.vue: видео грузится через
+ * XHR ради upload-прогресса, которого у fetch нет).
+ */
+export function getCsrfToken(): string | null {
+    return readCookie('XSRF-TOKEN');
+}
+
+/**
  * fetch, добавляющий CSRF-токен и JSON-заголовки.
  *
  * Роуты /api объявлены в routes/web.php, то есть проходят через web-middleware
@@ -34,7 +43,7 @@ export function apiFetch(
         headers.set('Content-Type', 'application/json');
     }
 
-    const token = readCookie('XSRF-TOKEN');
+    const token = getCsrfToken();
 
     if (token) {
         headers.set('X-XSRF-TOKEN', token);

@@ -11,6 +11,7 @@ import EditNodeModal from '../components/EditNodeModal.vue';
 import GlobalSearchModal from '../components/GlobalSearchModal.vue';
 import HudOverlay from '../components/HudOverlay.vue';
 import LinkNodeDialog from '../components/LinkNodeDialog.vue';
+import MessengerPanel from '../components/MessengerPanel.vue';
 import Minimap from '../components/Minimap.vue';
 import NodeInfoDialog from '../components/NodeInfoDialog.vue';
 import ResetPasswordModal from '../components/ResetPasswordModal.vue';
@@ -28,6 +29,7 @@ import type {
     RemoteCursor,
 } from '../components/SpaceScene.vue';
 import SpaceScene from '../components/SpaceScene.vue';
+import TeamManagerModal from '../components/TeamManagerModal.vue';
 import { apiFetch } from '../lib/api';
 import { getEcho } from '../lib/echo';
 import { provideSettings } from '../lib/i18n';
@@ -110,6 +112,9 @@ const resetPasswordSaving = ref(false);
 const showActivityLogModal = ref(false);
 const showSpaceActivityLogModal = ref(false);
 const showGlobalSearch = ref(false);
+const showMessenger = ref(false);
+const messengerUnreadCount = ref(0);
+const showTeamManager = ref(false);
 const shareTargetSpace = ref<SpaceItem | null>(null);
 const addModalParentNode = ref<NodeData | null>(null);
 
@@ -314,6 +319,39 @@ function scheduleLiveRefresh() {
 
 const liveChannelName = `space.${props.currentSpace.id}`;
 
+// Бейдж непрочитанных сообщений в HUD должен быть верным сразу, не только
+// после открытия самой панели мессенджера — она смонтирована лишь пока открыта.
+async function refreshMessengerBadge() {
+    try {
+        const res = await apiFetch('/api/messenger/summary');
+        const data = await res.json();
+        messengerUnreadCount.value = data.total_unread ?? 0;
+    } catch (err) {
+        console.error('Failed to load messenger unread count:', err);
+    }
+}
+
+function handleMessengerBadgeSignal() {
+    // Пока панель открыта, она сама перезапросит нужный тред — здесь
+    // достаточно освежить только счётчик для бейджа.
+    if (!showMessenger.value) {
+        refreshMessengerBadge();
+    }
+}
+
+onMounted(() => {
+    refreshMessengerBadge();
+    getEcho()
+        .private(`App.Models.User.${currentUserId.value}`)
+        .listen('.message.posted', handleMessengerBadgeSignal);
+});
+
+onUnmounted(() => {
+    getEcho()
+        .private(`App.Models.User.${currentUserId.value}`)
+        .stopListening('.message.posted', handleMessengerBadgeSignal);
+});
+
 onMounted(() => {
     getEcho()
         .private(liveChannelName)
@@ -373,6 +411,36 @@ onMounted(() => {
 
 onUnmounted(() => {
     getEcho().leave(presenceChannelName);
+});
+
+/**
+ * Presence на всё приложение (не на пространство) — online/offline точка у
+ * личных переписок в мессенджере (см. messenger.presence в
+ * routes/channels.php). В отличие от presenceChannelName выше, не зависит от
+ * currentSpace — подключаемся раз на всю сессию и не переподключаемся при
+ * смене пространства.
+ */
+const onlineUserIds = ref<Set<number>>(new Set());
+const MESSENGER_PRESENCE_CHANNEL = 'messenger.presence';
+
+onMounted(() => {
+    getEcho()
+        .join(MESSENGER_PRESENCE_CHANNEL)
+        .here((users: PresenceUser[]) => {
+            onlineUserIds.value = new Set(users.map((u) => u.id));
+        })
+        .joining((user: PresenceUser) => {
+            onlineUserIds.value = new Set(onlineUserIds.value).add(user.id);
+        })
+        .leaving((user: PresenceUser) => {
+            const next = new Set(onlineUserIds.value);
+            next.delete(user.id);
+            onlineUserIds.value = next;
+        });
+});
+
+onUnmounted(() => {
+    getEcho().leave(MESSENGER_PRESENCE_CHANNEL);
 });
 
 // Курсоры, от которых давно не было вестей (вкладку свернули/сеть моргнула),
@@ -658,6 +726,8 @@ const isAnyModalOpen = computed(
         showActivityLogModal.value ||
         showSpaceActivityLogModal.value ||
         showGlobalSearch.value ||
+        showMessenger.value ||
+        showTeamManager.value ||
         shareTargetSpace.value !== null,
 );
 
@@ -691,7 +761,10 @@ function handleGlobalKeydown(event: KeyboardEvent) {
             showDeleteModal.value = false;
             showResetPasswordModal.value = false;
             showActivityLogModal.value = false;
+            showSpaceActivityLogModal.value = false;
             showGlobalSearch.value = false;
+            showMessenger.value = false;
+            showTeamManager.value = false;
             shareTargetSpace.value = null;
         } else if (selectedNode.value) {
             selectedNode.value = null;
@@ -1205,11 +1278,14 @@ async function handleDeleteSpace(spaceId: number) {
             :can-edit="canEdit"
             :can-view-space-activity="isSpaceOwnerOrRoot"
             :presence-users="otherPresenceUsers"
+            :unread-message-count="messengerUnreadCount"
             @open-space-modal="showSpaceModal = true"
             @open-settings-modal="showSettingsModal = true"
             @open-activity-log="showActivityLogModal = true"
             @open-space-activity-log="showSpaceActivityLogModal = true"
             @open-global-search="showGlobalSearch = true"
+            @open-messenger="showMessenger = true"
+            @open-team-manager="showTeamManager = true"
             @open-add-root-modal="openAddRootModal"
             @focus-node="handleFocusNode"
             @undo="handleUndo"
@@ -1269,6 +1345,16 @@ async function handleDeleteSpace(spaceId: number) {
             @node-restored="handleNodeRestored"
             @tree-settings-updated="handleNodeRestored"
             @delete="showDeleteModal = true"
+        />
+
+        <!-- Мессенджер: плавающая панель поверх канваса, без Teleport/фона —
+             тот же непрерывный доступ к графу снизу, что и у NodeInfoDialog. -->
+        <MessengerPanel
+            v-if="showMessenger"
+            :current-user-id="currentUserId"
+            :online-user-ids="onlineUserIds"
+            @close="showMessenger = false"
+            @unread-count="messengerUnreadCount = $event"
         />
 
         <!-- Modals -->
@@ -1338,6 +1424,11 @@ async function handleDeleteSpace(spaceId: number) {
         <ActivityLogModal
             v-if="showActivityLogModal"
             @close="showActivityLogModal = false"
+        />
+
+        <TeamManagerModal
+            v-if="showTeamManager"
+            @close="showTeamManager = false"
         />
 
         <SpaceActivityLogModal

@@ -4,12 +4,14 @@ import {
     Activity,
     Search,
     Filter,
+    MessageCircle,
     Plus,
     RotateCcw,
     Layers,
     LogOut,
     ScrollText,
     Telescope,
+    Users,
     Wand2,
     Settings,
 } from 'lucide-vue-next';
@@ -30,6 +32,7 @@ const props = defineProps<{
     canEdit: boolean;
     canViewSpaceActivity: boolean;
     presenceUsers: PresenceUser[];
+    unreadMessageCount: number;
 }>();
 
 const emit = defineEmits<{
@@ -39,6 +42,8 @@ const emit = defineEmits<{
     (e: 'open-activity-log'): void;
     (e: 'open-space-activity-log'): void;
     (e: 'open-global-search'): void;
+    (e: 'open-messenger'): void;
+    (e: 'open-team-manager'): void;
     (e: 'focus-node', nodeId: number): void;
     (e: 'undo'): void;
     (e: 'auto-layout'): void;
@@ -169,6 +174,14 @@ defineExpose({ focusSearch });
                 <ScrollText class="h-4 w-4" />
             </button>
             <button
+                v-if="isRoot"
+                @click="emit('open-team-manager')"
+                class="rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
+                :title="t.teamManagerAction"
+            >
+                <Users class="h-4 w-4" />
+            </button>
+            <button
                 v-if="canViewSpaceActivity"
                 @click="emit('open-space-activity-log')"
                 class="rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
@@ -177,6 +190,19 @@ defineExpose({ focusSearch });
                 <Activity class="h-4 w-4" />
             </button>
             <NotificationBell />
+            <button
+                @click="emit('open-messenger')"
+                class="relative rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
+                :title="t.messengerAction"
+            >
+                <MessageCircle class="h-4 w-4" />
+                <span
+                    v-if="unreadMessageCount > 0"
+                    class="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white"
+                >
+                    {{ unreadMessageCount > 9 ? '9+' : unreadMessageCount }}
+                </span>
+            </button>
             <button
                 @click="emit('open-settings-modal')"
                 class="rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
