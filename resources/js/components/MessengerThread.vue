@@ -1,11 +1,16 @@
 <script setup lang="ts">
+import { router, usePage } from '@inertiajs/vue3';
 import {
+    Copy,
     Download,
     Eye,
     File as FileIcon,
+    Link2,
     Loader2,
     Paperclip,
+    Pencil,
     Send,
+    Trash2,
 } from 'lucide-vue-next';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { apiFetch, getCsrfToken } from '../lib/api';
@@ -27,24 +32,48 @@ export interface MessageAttachmentEntry {
     duration_ms: number | null;
 }
 
+/** Карточка узла, на который ссылается [[node:ID]] в теле — уже отфильтрована сервером по доступу читателя. */
+export interface NodeReferenceEntry {
+    id: number;
+    title: string;
+    space_id: number;
+    space_slug: string;
+}
+
 export interface MessageEntry {
     id: number;
     type: 'text' | 'voice' | 'video' | 'file';
     body: string | null;
     created_at: string;
+    edited_at: string | null;
+    deleted_at: string | null;
     sender: { id: number; name: string } | null;
     attachment: MessageAttachmentEntry | null;
+    node_references: NodeReferenceEntry[];
 }
+
+type BodySegment =
+    | { kind: 'text'; text: string }
+    | { kind: 'mention'; ref: NodeReferenceEntry };
 
 /** Изображения показываем миниатюрой в самом пузыре — остальное превью только по клику (Eye). */
 const IMAGE_FORMATS = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 
+const MENTION_PATTERN = /\[\[node:(\d+)\]\]/g;
+
 const props = defineProps<{
     conversationId: number;
     currentUserId: number;
+    currentSpaceId: number;
+}>();
+
+const emit = defineEmits<{
+    (e: 'focus-node', nodeId: number): void;
 }>();
 
 const t = useT();
+
+const isRoot = computed(() => usePage().props.auth.user.is_root);
 
 const loading = ref(true);
 const loadingOlder = ref(false);
@@ -341,6 +370,182 @@ function isMine(message: MessageEntry): boolean {
     return message.sender?.id === props.currentUserId;
 }
 
+/** Плашка "сообщение удалено": сервер уже прячет body/attachment для не-root — см. MessageController::serialize(). */
+function isDeletedPlaceholder(message: MessageEntry): boolean {
+    return (
+        message.deleted_at !== null &&
+        message.body === null &&
+        message.attachment === null
+    );
+}
+
+function canEditMessage(message: MessageEntry): boolean {
+    return (
+        isMine(message) &&
+        message.type === 'text' &&
+        message.deleted_at === null
+    );
+}
+
+function canDeleteMessage(message: MessageEntry): boolean {
+    return (isMine(message) || isRoot.value) && message.deleted_at === null;
+}
+
+/** Режет тело на текст и карточки упоминаний [[node:ID]] — ссылки уже отфильтрованы сервером по доступу читателя. */
+function splitBody(message: MessageEntry): BodySegment[] {
+    if (!message.body) {
+        return [];
+    }
+
+    const segments: BodySegment[] = [];
+    let lastIndex = 0;
+
+    for (const match of message.body.matchAll(MENTION_PATTERN)) {
+        const index = match.index ?? 0;
+
+        if (index > lastIndex) {
+            segments.push({
+                kind: 'text',
+                text: message.body.slice(lastIndex, index),
+            });
+        }
+
+        const ref = message.node_references.find(
+            (r) => r.id === Number(match[1]),
+        );
+        segments.push(
+            ref ? { kind: 'mention', ref } : { kind: 'text', text: match[0] },
+        );
+
+        lastIndex = index + match[0].length;
+    }
+
+    if (lastIndex < message.body.length) {
+        segments.push({ kind: 'text', text: message.body.slice(lastIndex) });
+    }
+
+    return segments;
+}
+
+/** То же переключение "своё/чужое пространство", что и у поиска в HudOverlay — см. GraphController::index(). */
+function goToNode(ref: NodeReferenceEntry) {
+    if (ref.space_id === props.currentSpaceId) {
+        emit('focus-node', ref.id);
+    } else {
+        router.get('/', { space: ref.space_slug, focus: ref.id });
+    }
+}
+
+async function copyMessageText(message: MessageEntry) {
+    if (!message.body) {
+        return;
+    }
+
+    try {
+        await navigator.clipboard.writeText(message.body);
+    } catch (err) {
+        console.error('Failed to copy message text:', err);
+    }
+}
+
+const editingMessageId = ref<number | null>(null);
+const editingBody = ref('');
+const savingEdit = ref(false);
+
+function startEdit(message: MessageEntry) {
+    editingMessageId.value = message.id;
+    editingBody.value = message.body ?? '';
+    activeActionsId.value = null;
+}
+
+function cancelEdit() {
+    editingMessageId.value = null;
+    editingBody.value = '';
+}
+
+async function saveEdit(message: MessageEntry) {
+    const body = editingBody.value.trim();
+
+    if (!body || savingEdit.value) {
+        return;
+    }
+
+    savingEdit.value = true;
+
+    try {
+        const res = await apiFetch(`${baseUrl()}/messages/${message.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ body }),
+        });
+
+        if (!res.ok) {
+            throw new Error('edit failed');
+        }
+
+        const updated: MessageEntry = await res.json();
+        const index = messages.value.findIndex((m) => m.id === message.id);
+
+        if (index !== -1) {
+            messages.value[index] = updated;
+        }
+
+        cancelEdit();
+    } catch (err) {
+        console.error('Failed to edit message:', err);
+    } finally {
+        savingEdit.value = false;
+    }
+}
+
+// Тап/ховер разворачивает иконки действий; удаление — двухшаговое (взвод +
+// подтверждение по той же кнопке), тот же приём, что и в TeamManagerModal.vue.
+const activeActionsId = ref<number | null>(null);
+const confirmingDeleteId = ref<number | null>(null);
+
+function toggleActions(message: MessageEntry) {
+    activeActionsId.value =
+        activeActionsId.value === message.id ? null : message.id;
+}
+
+async function deleteMessage(message: MessageEntry) {
+    try {
+        const res = await apiFetch(`${baseUrl()}/messages/${message.id}`, {
+            method: 'DELETE',
+        });
+
+        if (!res.ok) {
+            throw new Error('delete failed');
+        }
+
+        // Тот же сигнал (message.posted) придёт и перезагрузит список сам —
+        // но правим на месте сразу, не дожидаясь лишнего круга.
+        const index = messages.value.findIndex((m) => m.id === message.id);
+
+        if (index !== -1) {
+            const current = messages.value[index];
+            messages.value[index] = {
+                ...current,
+                deleted_at: new Date().toISOString(),
+                body: isRoot.value ? current.body : null,
+                attachment: isRoot.value ? current.attachment : null,
+            };
+        }
+    } catch (err) {
+        console.error('Failed to delete message:', err);
+    } finally {
+        confirmingDeleteId.value = null;
+        activeActionsId.value = null;
+    }
+}
+
+function handleDeleteClick(message: MessageEntry) {
+    if (confirmingDeleteId.value === message.id) {
+        deleteMessage(message);
+    } else {
+        confirmingDeleteId.value = message.id;
+    }
+}
+
 const canPost = computed(() => newBody.value.trim().length > 0);
 
 const currentUserId = computed(() => props.currentUserId);
@@ -408,7 +613,7 @@ watch(
                     v-for="message in messages"
                     :key="message.id"
                     :class="[
-                        'flex max-w-[78%] gap-2',
+                        'group flex max-w-[78%] gap-2',
                         isMine(message) ? 'ms-auto flex-row-reverse' : '',
                     ]"
                 >
@@ -419,17 +624,90 @@ watch(
                         >
                             {{ message.sender?.name ?? t.deletedAuthorLabel }}
                         </span>
+
+                        <!-- Плашка удалённого сообщения -->
                         <div
+                            v-if="isDeletedPlaceholder(message)"
                             :class="[
-                                'rounded-2xl px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap',
+                                'rounded-2xl bg-slate-800/40 px-3 py-2 text-xs text-slate-500 italic',
+                                isMine(message)
+                                    ? 'rounded-ee-md'
+                                    : 'rounded-es-md',
+                            ]"
+                        >
+                            {{ t.messengerDeletedPlaceholder }}
+                        </div>
+
+                        <!-- Режим редактирования -->
+                        <div
+                            v-else-if="editingMessageId === message.id"
+                            class="flex flex-col gap-1.5"
+                        >
+                            <textarea
+                                v-model="editingBody"
+                                rows="2"
+                                maxlength="2000"
+                                @keydown.enter.exact.prevent="saveEdit(message)"
+                                @keydown.escape="cancelEdit"
+                                class="min-w-56 rounded-2xl border border-blue-500 bg-slate-800 px-3 py-2 text-xs text-slate-100 focus:outline-none"
+                            />
+                            <div
+                                class="flex items-center gap-3 px-1 text-[10px] font-semibold"
+                            >
+                                <button
+                                    type="button"
+                                    :disabled="savingEdit"
+                                    @click="saveEdit(message)"
+                                    class="text-blue-400 hover:text-blue-300 disabled:opacity-50"
+                                >
+                                    {{
+                                        savingEdit
+                                            ? t.savingAction
+                                            : t.saveAction
+                                    }}
+                                </button>
+                                <button
+                                    type="button"
+                                    @click="cancelEdit"
+                                    class="text-slate-500 hover:text-slate-300"
+                                >
+                                    {{ t.cancelAction }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Обычный пузырь -->
+                        <div
+                            v-else
+                            @click="toggleActions(message)"
+                            :class="[
+                                'cursor-pointer rounded-2xl px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap',
                                 isMine(message)
                                     ? 'rounded-ee-md bg-blue-600 text-white'
                                     : 'rounded-es-md bg-slate-800 text-slate-100',
                             ]"
                         >
-                            <template v-if="message.type === 'text'">{{
-                                message.body
-                            }}</template>
+                            <template v-if="message.type === 'text'">
+                                <template
+                                    v-for="(segment, i) in splitBody(message)"
+                                    :key="i"
+                                >
+                                    <button
+                                        v-if="segment.kind === 'mention'"
+                                        type="button"
+                                        @click.stop="goToNode(segment.ref)"
+                                        class="mx-0.5 inline-flex items-center gap-1 rounded-lg border border-white/20 bg-black/15 px-1.5 py-0.5 align-middle text-[11px] font-semibold hover:bg-black/25"
+                                    >
+                                        <Link2 class="h-3 w-3 shrink-0" />
+                                        <span class="max-w-32 truncate">{{
+                                            segment.ref.title || t.untitledNode
+                                        }}</span>
+                                    </button>
+                                    <template v-else>{{
+                                        segment.text
+                                    }}</template>
+                                </template>
+                            </template>
 
                             <template v-else-if="isPlayableMedia(message)">
                                 <audio
@@ -451,7 +729,7 @@ watch(
                                     v-if="isImageAttachment(message)"
                                     :src="previewUrlFor(message)"
                                     :alt="message.attachment.label"
-                                    @click="openPreview(message)"
+                                    @click.stop="openPreview(message)"
                                     class="max-h-56 max-w-full cursor-pointer rounded-lg object-contain"
                                 />
                                 <div v-else class="flex items-center gap-2">
@@ -474,7 +752,7 @@ watch(
                                     <button
                                         v-if="message.attachment.previewable"
                                         type="button"
-                                        @click="openPreview(message)"
+                                        @click.stop="openPreview(message)"
                                         :aria-label="t.previewAction"
                                         :title="t.previewAction"
                                         class="shrink-0 rounded p-1 opacity-70 transition-opacity hover:opacity-100"
@@ -485,6 +763,7 @@ watch(
                                         :href="downloadUrlFor(message)"
                                         :aria-label="t.download"
                                         :title="t.download"
+                                        @click.stop
                                         class="shrink-0 rounded p-1 opacity-70 transition-opacity hover:opacity-100"
                                     >
                                         <Download class="h-4 w-4" />
@@ -492,14 +771,82 @@ watch(
                                 </div>
                             </template>
                         </div>
-                        <span
+
+                        <div
                             :class="[
-                                'px-1 text-[9.5px] text-slate-500',
-                                isMine(message) ? 'self-end' : '',
+                                'flex items-center gap-1.5 px-1',
+                                isMine(message)
+                                    ? 'flex-row-reverse self-end'
+                                    : '',
                             ]"
                         >
-                            {{ formatTime(message.created_at) }}
-                        </span>
+                            <span class="text-[9.5px] text-slate-500">
+                                {{ formatTime(message.created_at) }}
+                                <template v-if="message.edited_at">
+                                    · {{ t.messengerEditedLabel }}</template
+                                >
+                                <template v-if="message.deleted_at && isRoot">
+                                    · {{ t.messengerDeletedLabel }}</template
+                                >
+                            </span>
+
+                            <div
+                                v-if="
+                                    !isDeletedPlaceholder(message) &&
+                                    editingMessageId !== message.id
+                                "
+                                :class="[
+                                    'flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100',
+                                    activeActionsId === message.id
+                                        ? 'opacity-100'
+                                        : '',
+                                ]"
+                            >
+                                <button
+                                    v-if="message.body"
+                                    type="button"
+                                    @click.stop="copyMessageText(message)"
+                                    :aria-label="t.messengerCopyAction"
+                                    :title="t.messengerCopyAction"
+                                    class="rounded p-0.5 text-slate-500 hover:text-slate-200"
+                                >
+                                    <Copy class="h-3 w-3" />
+                                </button>
+                                <button
+                                    v-if="canEditMessage(message)"
+                                    type="button"
+                                    @click.stop="startEdit(message)"
+                                    :aria-label="t.editAction"
+                                    :title="t.editAction"
+                                    class="rounded p-0.5 text-slate-500 hover:text-slate-200"
+                                >
+                                    <Pencil class="h-3 w-3" />
+                                </button>
+                                <button
+                                    v-if="canDeleteMessage(message)"
+                                    type="button"
+                                    @click.stop="handleDeleteClick(message)"
+                                    :aria-label="
+                                        confirmingDeleteId === message.id
+                                            ? t.confirmDelete
+                                            : t.deleteAction
+                                    "
+                                    :title="
+                                        confirmingDeleteId === message.id
+                                            ? t.confirmDelete
+                                            : t.deleteAction
+                                    "
+                                    :class="[
+                                        'rounded p-0.5',
+                                        confirmingDeleteId === message.id
+                                            ? 'text-rose-400'
+                                            : 'text-slate-500 hover:text-rose-400',
+                                    ]"
+                                >
+                                    <Trash2 class="h-3 w-3" />
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </template>

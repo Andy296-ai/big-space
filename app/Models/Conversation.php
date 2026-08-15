@@ -9,11 +9,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
- * Один из трёх видов переписки: общая на всех (единственная, см. миграцию
+ * Один из четырёх видов переписки: общая на всех (единственная, см. миграцию
  * 2026_08_15_000007), командная (одна на Team, создаётся/удаляется вместе
- * с ней через TeamProvisioner) или личная 1:1 (создаётся по требованию,
+ * с ней через TeamProvisioner), личная 1:1 (создаётся по требованию,
  * см. DirectConversationController — только между людьми из одной команды,
- * кроме root, который пишет и получает от кого угодно).
+ * кроме root, который пишет и получает от кого угодно) или обсуждение узла
+ * (одна на Node, создаётся по требованию через кнопку «Обсудить» — доступ
+ * у неё не по списку участников, а по доступу к пространству узла, см.
+ * ConversationPolicy::access()).
  */
 class Conversation extends Model
 {
@@ -23,14 +26,22 @@ class Conversation extends Model
 
     public const TYPE_DIRECT = 'direct';
 
-    public const TYPES = [self::TYPE_GLOBAL, self::TYPE_TEAM, self::TYPE_DIRECT];
+    public const TYPE_NODE = 'node';
 
-    protected $fillable = ['type', 'team_id'];
+    public const TYPES = [self::TYPE_GLOBAL, self::TYPE_TEAM, self::TYPE_DIRECT, self::TYPE_NODE];
+
+    protected $fillable = ['type', 'team_id', 'node_id'];
 
     /** @return BelongsTo<Team, $this> */
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);
+    }
+
+    /** @return BelongsTo<Node, $this> */
+    public function node(): BelongsTo
+    {
+        return $this->belongsTo(Node::class);
     }
 
     /** @return BelongsToMany<User, $this, ConversationParticipantPivot> */

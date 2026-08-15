@@ -8,8 +8,11 @@
         <link rel="icon" href="/favicon.svg" type="image/svg+xml">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
-        {{-- "Добавить на экран домой" — без service worker, только манифест и иконки
-             (см. план: офлайн-кэш сознательно отложен до появления боевого домена). --}}
+        {{-- "Добавить на экран домой" — сама установка не требует service worker,
+             только манифест и иконки (офлайн-кэш сознательно отложен до появления
+             боевого домена). Отдельный МИНИМАЛЬНЫЙ service worker (public/sw.js,
+             только push/notificationclick, без install/fetch) регистрируется по
+             явному действию пользователя — см. SettingsPanel.vue/lib/push.ts. --}}
         <link rel="manifest" href="/manifest.json">
         {{-- Стартовое значение — фон темы cosmic по умолчанию; applyTheme() в
              settings.ts держит его в синхроне при смене темы в рантайме,
@@ -18,6 +21,10 @@
         <meta name="apple-mobile-web-app-capable" content="yes">
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
         <meta name="apple-mobile-web-app-title" content="Nodus">
+        {{-- Публичный VAPID-ключ — не секрет, спокойно живёт в разметке (та же
+             логика, что у csp-nonce ниже): избавляет подписку на push от
+             лишнего похода за ключом перед pushManager.subscribe(). --}}
+        <meta name="vapid-public-key" content="{{ config('webpush.vapid.public_key') }}">
 
         {{-- Конвенция Vite: dev-сервер читает этот тег и подписывает им инжектируемые <style> в HMR. --}}
         <meta property="csp-nonce" nonce="{{ Illuminate\Support\Facades\Vite::cspNonce() }}">

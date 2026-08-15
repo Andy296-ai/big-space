@@ -18,6 +18,7 @@ class MessengerController extends Controller
     public function summary(Request $request): JsonResponse
     {
         $userId = $request->user()->id;
+        $isRoot = $request->user()->is_root;
 
         $unreadByConversation = DB::table('conversation_participants as cp')
             ->leftJoin('messages as m', function ($join) use ($userId) {
@@ -34,14 +35,26 @@ class MessengerController extends Controller
             ->get()
             ->keyBy('conversation_id');
 
-        $conversations = Conversation::with(['team:id,name', 'latestMessage.sender:id,name', 'participants:id,name'])
+        $conversations = Conversation::with([
+            'team:id,name',
+            'node:id,title,space_id',
+            'node.space:id,slug',
+            'latestMessage.sender:id,name',
+            'participants:id,name',
+        ])
             ->whereHas('participants', fn ($q) => $q->where('user_id', $userId))
             ->get()
-            ->map(function (Conversation $conversation) use ($unreadByConversation, $userId) {
+            ->map(function (Conversation $conversation) use ($unreadByConversation, $userId, $isRoot) {
                 // У личной переписки нет своего имени — берём из другого участника.
                 $directWith = $conversation->type === Conversation::TYPE_DIRECT
                     ? $conversation->participants->firstWhere('id', '!=', $userId)
                     : null;
+
+                $latest = $conversation->latestMessage;
+                // Плашка «сообщение удалено» — та же дисциплина видимости,
+                // что и в MessageController::serialize(): root видит
+                // настоящий текст, остальные только факт удаления.
+                $hideLatestBody = $latest !== null && $latest->deleted_at !== null && ! $isRoot;
 
                 return [
                     'id' => $conversation->id,
@@ -50,17 +63,24 @@ class MessengerController extends Controller
                         'id' => $conversation->team->id,
                         'name' => $conversation->team->name,
                     ] : null,
+                    'node' => $conversation->node ? [
+                        'id' => $conversation->node->id,
+                        'title' => $conversation->node->title,
+                        'space_id' => $conversation->node->space_id,
+                        'space_slug' => $conversation->node->space->slug,
+                    ] : null,
                     'direct_with' => $directWith ? [
                         'id' => $directWith->id,
                         'name' => $directWith->name,
                     ] : null,
                     'unread_count' => (int) ($unreadByConversation[$conversation->id]->unread ?? 0),
-                    'last_message' => $conversation->latestMessage ? [
-                        'id' => $conversation->latestMessage->id,
-                        'type' => $conversation->latestMessage->type,
-                        'body' => $conversation->latestMessage->body,
-                        'sender_name' => $conversation->latestMessage->sender?->name,
-                        'created_at' => $conversation->latestMessage->created_at,
+                    'last_message' => $latest ? [
+                        'id' => $latest->id,
+                        'type' => $latest->type,
+                        'body' => $hideLatestBody ? null : $latest->body,
+                        'sender_name' => $latest->sender?->name,
+                        'created_at' => $latest->created_at,
+                        'deleted_at' => $latest->deleted_at,
                     ] : null,
                 ];
             })

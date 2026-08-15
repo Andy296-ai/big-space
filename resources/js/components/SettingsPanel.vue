@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+    Bell,
     Box,
     Check,
     GitBranch,
@@ -7,6 +8,7 @@ import {
     Globe,
     Keyboard,
     Layout,
+    Loader2,
     Network,
     Palette,
     RotateCcw,
@@ -17,6 +19,12 @@ import {
     X,
 } from 'lucide-vue-next';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import {
+    disablePush,
+    enablePush,
+    isPushEnabled,
+    isPushSupported,
+} from '../lib/push';
 import {
     DEFAULT_SETTINGS,
     NODE_SCALE_MAX,
@@ -205,6 +213,52 @@ function onKeydown(event: KeyboardEvent) {
 
 onMounted(() => window.addEventListener('keydown', onKeydown));
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
+
+// Push-уведомления — не обычная булева настройка из localStorage: состояние
+// переключателя должно отражать РЕАЛЬНУЮ подписку в этом браузере (может не
+// совпадать с тем, что человек выбирал раньше — сняли разрешение в браузере,
+// сменили устройство и т.п.), поэтому не в общем interfaceToggles-цикле.
+const pushSupported = ref(false);
+const pushEnabled = ref(false);
+const pushBusy = ref(false);
+const pushError = ref('');
+
+onMounted(async () => {
+    pushSupported.value = isPushSupported();
+
+    if (pushSupported.value) {
+        pushEnabled.value = await isPushEnabled();
+    }
+});
+
+async function togglePush() {
+    if (pushBusy.value) {
+        return;
+    }
+
+    pushBusy.value = true;
+    pushError.value = '';
+
+    try {
+        if (pushEnabled.value) {
+            await disablePush();
+            pushEnabled.value = false;
+        } else {
+            const granted = await enablePush();
+
+            if (granted) {
+                pushEnabled.value = true;
+            } else {
+                pushError.value = t.value.pushPermissionDeniedError;
+            }
+        }
+    } catch (err) {
+        console.error('Failed to toggle push notifications:', err);
+        pushError.value = t.value.pushToggleError;
+    } finally {
+        pushBusy.value = false;
+    }
+}
 </script>
 
 <template>
@@ -612,6 +666,68 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
                                 </span>
                             </button>
                         </div>
+                    </div>
+
+                    <div>
+                        <div
+                            class="mb-2 flex items-center gap-1.5 font-semibold text-slate-300"
+                        >
+                            <Bell class="h-4 w-4 text-rose-400" />
+                            <span>{{ t.pushNotificationsLabel }}</span>
+                        </div>
+                        <button
+                            v-if="pushSupported"
+                            type="button"
+                            role="switch"
+                            :aria-checked="pushEnabled"
+                            :disabled="pushBusy"
+                            @click="togglePush"
+                            class="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-700 bg-slate-800/60 p-3 text-start transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            <span class="font-medium text-slate-200">{{
+                                t.pushNotificationsToggleLabel
+                            }}</span>
+                            <Loader2
+                                v-if="pushBusy"
+                                class="h-4 w-4 shrink-0 animate-spin text-slate-400"
+                            />
+                            <span
+                                v-else
+                                :class="[
+                                    'relative h-5 w-9 shrink-0 rounded-full transition-colors',
+                                    pushEnabled
+                                        ? 'bg-blue-500'
+                                        : 'bg-slate-600',
+                                ]"
+                            >
+                                <span
+                                    :class="[
+                                        'absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all',
+                                        pushEnabled
+                                            ? 'start-[1.125rem]'
+                                            : 'start-0.5',
+                                    ]"
+                                />
+                            </span>
+                        </button>
+                        <p
+                            v-else
+                            class="rounded-2xl border border-slate-700 bg-slate-800/40 p-3 text-[11px] text-slate-500"
+                        >
+                            {{ t.pushNotificationsUnsupported }}
+                        </p>
+                        <p
+                            v-if="pushError"
+                            class="mt-1.5 px-1 text-[10.5px] text-rose-400"
+                        >
+                            {{ pushError }}
+                        </p>
+                        <p
+                            v-else
+                            class="mt-1.5 px-1 text-[10.5px] text-slate-500"
+                        >
+                            {{ t.pushNotificationsHint }}
+                        </p>
                     </div>
 
                     <div>

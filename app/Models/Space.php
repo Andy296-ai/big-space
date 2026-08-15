@@ -108,6 +108,34 @@ class Space extends Model
     }
 
     /**
+     * Батч-версия isAccessibleBy() — один запрос на весь набор id пространств,
+     * а не по одному в цикле. Нужна там, где доступность приходится проверять
+     * для многих пространств разом (например, карточки узлов-упоминаний в
+     * ленте сообщений — см. MessageController::serialize()), где вызов
+     * isAccessibleBy() на каждое было бы настоящим N+1: сам метод не
+     * мемоизирован и всегда бьёт по базе.
+     *
+     * @param  iterable<int>  $spaceIds
+     * @return array<int, int> id пространств из набора, доступных этому пользователю
+     */
+    public static function accessibleAmong(iterable $spaceIds, User $user): array
+    {
+        $ids = collect($spaceIds)->unique()->values();
+
+        if ($user->is_root) {
+            return $ids->all();
+        }
+
+        return static::whereIn('id', $ids)
+            ->where(function ($query) use ($user) {
+                $query->where('user_id', $user->id)
+                    ->orWhereHas('collaborators', fn ($q) => $q->where('user_id', $user->id));
+            })
+            ->pluck('id')
+            ->all();
+    }
+
+    /**
      * Роль пользователя в этом пространстве для фронтенда (кнопки
      * скрываются по ней) — root везде "owner", у него полные права
      * независимо от того, кому пространство принадлежит на самом деле.

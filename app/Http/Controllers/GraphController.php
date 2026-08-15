@@ -4,7 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Events\SpaceUpdated;
 use App\Models\ActivityLog;
+use App\Models\Conversation;
 use App\Models\Edge;
+use App\Models\Message;
+use App\Models\MessageAttachment;
 use App\Models\Node;
 use App\Models\NodeAttachment;
 use App\Models\NodeRevision;
@@ -599,6 +602,21 @@ class GraphController extends Controller
             }
         }
 
+        // Обсуждения узлов (type=node) каскадом унесут messages/
+        // message_attachments через FK при удалении Node ниже — но каскад по
+        // FK не поднимает модельные события, а MessageAttachment чистит файл
+        // с диска именно в своём deleting-хуке. Тот же пробел уже закрыт для
+        // команд в TeamProvisioner::deleteTeam() — проходим по вложениям
+        // явно, пока узлы (и их разговоры) ещё не удалены.
+        $nodeConversationIds = Conversation::where('type', Conversation::TYPE_NODE)
+            ->whereIn('node_id', $deletionIds)
+            ->pluck('id');
+
+        MessageAttachment::whereIn(
+            'message_id',
+            Message::whereIn('conversation_id', $nodeConversationIds)->pluck('id'),
+        )->get()->each->delete();
+
         [$nodesBackup, $edgesBackup] = DB::transaction(function () use ($space, $deletionIds, $linkedSpaces, $linkedUsers) {
             // Сначала удаляем то, что узлы представляют — благодаря
             // nullOnDelete() на linked_space_id/linked_user_id это обнулит
@@ -677,6 +695,12 @@ class GraphController extends Controller
         ]);
     }
 
+    /**
+     * Снимок отмены хранит только nodes/edges — как и связанные
+     * пространства/пользователи (см. deleteNodes выше), обсуждение узла
+     * (type=node) в него не входит и не восстанавливается вместе с узлом;
+     * это сознательная асимметрия, не баг.
+     */
     public function restoreNodes(Request $request, Space $space): JsonResponse
     {
         $validated = $request->validate([

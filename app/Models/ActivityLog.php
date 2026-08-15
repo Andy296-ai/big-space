@@ -74,6 +74,8 @@ class ActivityLog extends Model
 
     public const ACTION_TEAM_MEMBER_REMOVED = 'team.member_removed';
 
+    public const ACTION_MESSAGE_DELETED = 'message.deleted';
+
     protected $fillable = [
         'actor_id',
         'space_id',

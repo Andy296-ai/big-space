@@ -18,6 +18,7 @@ import {
     Link,
     MapPin,
     MessageSquare,
+    MessagesSquare,
     Plus,
     Settings2,
     Tag,
@@ -53,6 +54,7 @@ const emit = defineEmits<{
     (e: 'open-edit'): void;
     (e: 'open-link'): void;
     (e: 'open-copy'): void;
+    (e: 'open-discuss', nodeId: number): void;
     (e: 'open-reset-password'): void;
     (e: 'node-restored', node: NodeData): void;
     (e: 'tree-settings-updated', node: NodeData): void;
@@ -446,6 +448,16 @@ onBeforeUnmount(() => destroyMap());
             >
                 <MessageSquare class="h-3.5 w-3.5 text-blue-400" />
                 <span>{{ t.commentsAction }}</span>
+            </button>
+
+            <!-- Тред в мессенджере, привязанный к узлу — та же видимость, что у комментариев -->
+            <button
+                type="button"
+                @click="emit('open-discuss', node.id)"
+                class="flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/50 px-3 py-2 text-xs font-semibold text-slate-200 transition-colors hover:bg-slate-700"
+            >
+                <MessagesSquare class="h-3.5 w-3.5 text-emerald-400" />
+                <span>{{ t.messengerDiscussAction }}</span>
             </button>
 
             <!-- Настройки дерева: только у корневых узлов, и только если можно менять граф -->

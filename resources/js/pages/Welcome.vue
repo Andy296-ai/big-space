@@ -114,6 +114,7 @@ const showSpaceActivityLogModal = ref(false);
 const showGlobalSearch = ref(false);
 const showMessenger = ref(false);
 const messengerUnreadCount = ref(0);
+const messengerInitialConversationId = ref<number | null>(null);
 const showTeamManager = ref(false);
 const shareTargetSpace = ref<SpaceItem | null>(null);
 const addModalParentNode = ref<NodeData | null>(null);
@@ -633,6 +634,27 @@ function handleFocusNode(nodeId: number) {
 
     if (n) {
         selectedNode.value = n;
+    }
+}
+
+/** Клик по карточке узла-упоминания в мессенджере — закрываем панель, чтобы был виден подсвеченный узел на канвасе. */
+function handleFocusNodeFromMessenger(nodeId: number) {
+    showMessenger.value = false;
+    handleFocusNode(nodeId);
+}
+
+/** «Обсудить» у узла — находит/создаёт его разговор и открывает мессенджер сразу на нём. */
+async function openNodeDiscussion(nodeId: number) {
+    try {
+        const res = await apiFetch(
+            `/api/spaces/${props.currentSpace.id}/nodes/${nodeId}/discuss`,
+            { method: 'POST' },
+        );
+        const data = await res.json();
+        messengerInitialConversationId.value = data.id;
+        showMessenger.value = true;
+    } catch (err) {
+        console.error('Failed to open node discussion:', err);
     }
 }
 
@@ -1338,6 +1360,7 @@ async function handleDeleteSpace(spaceId: number) {
             @open-edit="showEditModal = true"
             @open-link="showLinkModal = true"
             @open-copy="showCopyModal = true"
+            @open-discuss="openNodeDiscussion"
             @open-reset-password="
                 resetPasswordError = null;
                 showResetPasswordModal = true;
@@ -1352,9 +1375,12 @@ async function handleDeleteSpace(spaceId: number) {
         <MessengerPanel
             v-if="showMessenger"
             :current-user-id="currentUserId"
+            :current-space-id="currentSpace.id"
             :online-user-ids="onlineUserIds"
+            :initial-conversation-id="messengerInitialConversationId"
             @close="showMessenger = false"
             @unread-count="messengerUnreadCount = $event"
+            @focus-node="handleFocusNodeFromMessenger"
         />
 
         <!-- Modals -->

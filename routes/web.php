@@ -12,8 +12,10 @@ use App\Http\Controllers\MessageAttachmentController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\MessengerController;
 use App\Http\Controllers\NodeCommentController;
+use App\Http\Controllers\NodeDiscussController;
 use App\Http\Controllers\NodeTreeSettingsController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\PushSubscriptionController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\SpaceActivityLogController;
 use App\Http\Controllers\SpaceCollaboratorController;
@@ -46,6 +48,10 @@ Route::middleware('auth')->group(function () {
         Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
         Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
 
+        // Web Push — подписка/отписка всегда на самого себя, без id в URL.
+        Route::post('/push/subscribe', [PushSubscriptionController::class, 'store']);
+        Route::post('/push/unsubscribe', [PushSubscriptionController::class, 'destroy']);
+
         // Мессенджер — общий на всех пользователей вне зависимости от пространств.
         Route::prefix('messenger')->group(function () {
             Route::get('/summary', [MessengerController::class, 'summary']);
@@ -55,6 +61,8 @@ Route::middleware('auth')->group(function () {
             Route::middleware('can:access,conversation')->prefix('conversations/{conversation}')->group(function () {
                 Route::get('/messages', [MessageController::class, 'index']);
                 Route::post('/messages', [MessageController::class, 'store'])->middleware('throttle:messages');
+                Route::put('/messages/{message}', [MessageController::class, 'update'])->middleware('throttle:messages');
+                Route::delete('/messages/{message}', [MessageController::class, 'destroy'])->middleware('throttle:messages');
                 Route::post('/read', [MessageController::class, 'markRead']);
                 Route::get('/messages/{message}/attachment/download', [MessageAttachmentController::class, 'download']);
                 Route::get('/messages/{message}/attachment/preview', [MessageAttachmentController::class, 'preview']);
@@ -98,6 +106,9 @@ Route::middleware('auth')->group(function () {
             Route::get('/nodes/{node}/comments', [NodeCommentController::class, 'index']);
             Route::post('/nodes/{node}/comments', [NodeCommentController::class, 'store']);
             Route::delete('/nodes/{node}/comments/{comment}', [NodeCommentController::class, 'destroy']);
+
+            // «Обсудить» — открывает/создаёт разговор в мессенджере для этого узла.
+            Route::post('/nodes/{node}/discuss', [NodeDiscussController::class, 'store'])->middleware('throttle:messages');
 
             // Меняет граф — нужна роль editor (или владелец/root).
             Route::middleware('can:edit,space')->group(function () {

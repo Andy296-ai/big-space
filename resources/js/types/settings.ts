@@ -528,6 +528,18 @@ export type TranslationKeys = {
     teamManagerNoMembers: string;
     teamManagerLoadError: string;
     messengerBackAction: string;
+    messengerDeletedPlaceholder: string;
+    messengerEditedLabel: string;
+    messengerDeletedLabel: string;
+    messengerCopyAction: string;
+    messengerNodeSection: string;
+    messengerDiscussAction: string;
+    pushNotificationsLabel: string;
+    pushNotificationsToggleLabel: string;
+    pushNotificationsUnsupported: string;
+    pushNotificationsHint: string;
+    pushPermissionDeniedError: string;
+    pushToggleError: string;
 };
 
 export const translations: Record<Language, TranslationKeys> = {
@@ -876,6 +888,21 @@ export const translations: Record<Language, TranslationKeys> = {
         teamManagerNoMembers: 'No members yet.',
         teamManagerLoadError: 'Something went wrong. Please try again.',
         messengerBackAction: 'Back',
+        messengerDeletedPlaceholder: 'This message was deleted',
+        messengerEditedLabel: 'edited',
+        messengerDeletedLabel: 'deleted',
+        messengerCopyAction: 'Copy text',
+        messengerNodeSection: 'Node discussions',
+        messengerDiscussAction: 'Discuss',
+        pushNotificationsLabel: 'Push notifications',
+        pushNotificationsToggleLabel: 'Notify me about new messages',
+        pushNotificationsUnsupported:
+            'Not supported in this browser. On iPhone/iPad, add Nodus to your home screen first.',
+        pushNotificationsHint:
+            "You'll get a notification when a message arrives and the app isn't open.",
+        pushPermissionDeniedError:
+            'Notification permission was denied in the browser.',
+        pushToggleError: 'Something went wrong. Please try again.',
     },
     ru: {
         currentSpace: 'Текущее пространство',
@@ -1225,6 +1252,21 @@ export const translations: Record<Language, TranslationKeys> = {
         teamManagerNoMembers: 'Пока нет участников.',
         teamManagerLoadError: 'Что-то пошло не так. Попробуйте ещё раз.',
         messengerBackAction: 'Назад',
+        messengerDeletedPlaceholder: 'Сообщение удалено',
+        messengerEditedLabel: 'изменено',
+        messengerDeletedLabel: 'удалено',
+        messengerCopyAction: 'Копировать текст',
+        messengerNodeSection: 'Обсуждения узлов',
+        messengerDiscussAction: 'Обсудить',
+        pushNotificationsLabel: 'Push-уведомления',
+        pushNotificationsToggleLabel: 'Уведомлять о новых сообщениях',
+        pushNotificationsUnsupported:
+            'Не поддерживается в этом браузере. На iPhone/iPad сначала добавьте Nodus на домашний экран.',
+        pushNotificationsHint:
+            'Уведомление придёт, когда сообщение получено, а приложение не открыто.',
+        pushPermissionDeniedError:
+            'Разрешение на уведомления отклонено в браузере.',
+        pushToggleError: 'Что-то пошло не так. Попробуйте ещё раз.',
     },
     tg: {
         currentSpace: 'Фазои ҷорӣ',
@@ -1575,6 +1617,20 @@ export const translations: Record<Language, TranslationKeys> = {
         teamManagerNoMembers: 'Ҳанӯз аъзо нест.',
         teamManagerLoadError: 'Хатоги рӯй дод. Бори дигар кӯшиш кунед.',
         messengerBackAction: 'Бозгашт',
+        messengerDeletedPlaceholder: 'Паём нест карда шуд',
+        messengerEditedLabel: 'тағйир ёфт',
+        messengerDeletedLabel: 'нест шуд',
+        messengerCopyAction: 'Нусхабардории матн',
+        messengerNodeSection: 'Баҳсҳои гузарҳо',
+        messengerDiscussAction: 'Баҳс кардан',
+        pushNotificationsLabel: 'Огоҳиномаҳои push',
+        pushNotificationsToggleLabel: 'Дар бораи паёмҳои нав огоҳ кунед',
+        pushNotificationsUnsupported:
+            'Дар ин браузер дастгирӣ намешавад. Дар iPhone/iPad аввал Nodus-ро ба экрани асосӣ илова кунед.',
+        pushNotificationsHint:
+            'Вақте ки паём мерасад ва барнома кушода нест, огоҳинома мефиристад.',
+        pushPermissionDeniedError: 'Иҷозати огоҳиномаҳо дар браузер рад шуд.',
+        pushToggleError: 'Хатоги рӯй дод. Бори дигар кӯшиш кунед.',
     },
     fa: {
         currentSpace: 'فضای فعلی',
@@ -1920,5 +1976,19 @@ export const translations: Record<Language, TranslationKeys> = {
         teamManagerNoMembers: 'هنوز عضوی نیست.',
         teamManagerLoadError: 'خطایی رخ داد. دوباره تلاش کنید.',
         messengerBackAction: 'بازگشت',
+        messengerDeletedPlaceholder: 'این پیام حذف شد',
+        messengerEditedLabel: 'ویرایش‌شده',
+        messengerDeletedLabel: 'حذف‌شده',
+        messengerCopyAction: 'کپی متن',
+        messengerNodeSection: 'بحث‌های گره',
+        messengerDiscussAction: 'بحث',
+        pushNotificationsLabel: 'اعلان‌های پوش',
+        pushNotificationsToggleLabel: 'دربارهٔ پیام‌های جدید مطلعم کن',
+        pushNotificationsUnsupported:
+            'در این مرورگر پشتیبانی نمی‌شود. در آیفون/آیپد ابتدا Nodus را به صفحهٔ اصلی اضافه کنید.',
+        pushNotificationsHint:
+            'وقتی پیامی برسد و برنامه باز نباشد، اعلان دریافت می‌کنید.',
+        pushPermissionDeniedError: 'اجازهٔ اعلان در مرورگر رد شد.',
+        pushToggleError: 'خطایی رخ داد. دوباره تلاش کنید.',
     },
 };

@@ -2,13 +2,14 @@
 import {
     ArrowLeft,
     Globe2,
+    Link2,
     Loader2,
     Plus,
     Search,
     Users,
     X,
 } from 'lucide-vue-next';
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { apiFetch } from '../lib/api';
 import { getEcho } from '../lib/echo';
 import { useT } from '../lib/i18n';
@@ -16,8 +17,14 @@ import MessengerThread from './MessengerThread.vue';
 
 interface ConversationSummary {
     id: number;
-    type: 'global' | 'team' | 'direct';
+    type: 'global' | 'team' | 'direct' | 'node';
     team: { id: number; name: string } | null;
+    node: {
+        id: number;
+        title: string;
+        space_id: number;
+        space_slug: string;
+    } | null;
     direct_with: { id: number; name: string } | null;
     unread_count: number;
     last_message: {
@@ -26,6 +33,7 @@ interface ConversationSummary {
         body: string | null;
         sender_name: string | null;
         created_at: string;
+        deleted_at: string | null;
     } | null;
 }
 
@@ -37,12 +45,16 @@ interface Teammate {
 
 const props = defineProps<{
     currentUserId: number;
+    currentSpaceId: number;
     onlineUserIds: Set<number>;
+    /** Открыть сразу на конкретном разговоре — например, из кнопки «Обсудить» у узла. */
+    initialConversationId?: number | null;
 }>();
 
 const emit = defineEmits<{
     (e: 'close'): void;
     (e: 'unread-count', count: number): void;
+    (e: 'focus-node', nodeId: number): void;
 }>();
 
 const t = useT();
@@ -64,6 +76,9 @@ const teamConversations = computed(() =>
 );
 const directConversations = computed(() =>
     conversations.value.filter((c) => c.type === 'direct'),
+);
+const nodeConversations = computed(() =>
+    conversations.value.filter((c) => c.type === 'node'),
 );
 
 const filteredTeammates = computed(() => {
@@ -99,9 +114,15 @@ const selectedConversationTitle = computed(() => {
         return t.value.messengerGlobalChat;
     }
 
-    return conversation.type === 'team'
-        ? (conversation.team?.name ?? '')
-        : (conversation.direct_with?.name ?? '');
+    if (conversation.type === 'team') {
+        return conversation.team?.name ?? '';
+    }
+
+    if (conversation.type === 'node') {
+        return conversation.node?.title || t.value.untitledNode;
+    }
+
+    return conversation.direct_with?.name ?? '';
 });
 
 function goBack() {
@@ -117,6 +138,13 @@ function previewFor(conversation: ConversationSummary): string {
     const prefix = conversation.last_message.sender_name
         ? `${conversation.last_message.sender_name}: `
         : '';
+
+    // Плашка "сообщение удалено" — та же дисциплина видимости, что и в
+    // MessageController::serialize() (тело здесь уже null для не-root,
+    // сервер это решает, а не фронт).
+    if (conversation.last_message.deleted_at) {
+        return `${prefix}${t.value.messengerDeletedPlaceholder}`;
+    }
 
     // У файловых/голосовых/видео-сообщений body всегда null — показываем
     // подпись по типу вместо пустой строки.
@@ -142,6 +170,20 @@ async function loadSummary() {
         loading.value = false;
     }
 }
+
+// Открыть сразу на конкретном разговоре (кнопка «Обсудить» у узла и т.п.) —
+// сервер уже успел приложить вызывающего участником, так что к первому же
+// ответу summary() разговор точно уже в списке, гонки нет.
+watch(
+    () => props.initialConversationId,
+    (id) => {
+        if (id != null) {
+            selectedId.value = id;
+            showStartDirect.value = false;
+        }
+    },
+    { immediate: true },
+);
 
 function selectConversation(id: number) {
     selectedId.value = id;
@@ -394,6 +436,48 @@ onUnmounted(() => {
                             {{ c.unread_count > 9 ? '9+' : c.unread_count }}
                         </span>
                     </button>
+
+                    <template v-if="nodeConversations.length">
+                        <div
+                            class="px-2 pt-3 pb-1 text-[9.5px] font-extrabold tracking-wider text-slate-500 uppercase"
+                        >
+                            {{ t.messengerNodeSection }}
+                        </div>
+                        <button
+                            v-for="c in nodeConversations"
+                            :key="c.id"
+                            type="button"
+                            @click="selectConversation(c.id)"
+                            :class="[
+                                'flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-start transition-colors',
+                                selectedId === c.id
+                                    ? 'bg-blue-600/20 text-slate-100'
+                                    : 'text-slate-400 hover:bg-slate-800/60',
+                            ]"
+                        >
+                            <span
+                                class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-700 text-white"
+                            >
+                                <Link2 class="h-3.5 w-3.5" />
+                            </span>
+                            <span class="min-w-0 flex-1">
+                                <span
+                                    class="block truncate text-xs font-bold"
+                                    >{{ c.node?.title || t.untitledNode }}</span
+                                >
+                                <span
+                                    class="block truncate text-[10.5px] text-slate-500"
+                                    >{{ previewFor(c) }}</span
+                                >
+                            </span>
+                            <span
+                                v-if="c.unread_count > 0"
+                                class="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-rose-500 px-1 text-[9.5px] font-bold text-white"
+                            >
+                                {{ c.unread_count > 9 ? '9+' : c.unread_count }}
+                            </span>
+                        </button>
+                    </template>
                 </template>
             </div>
         </div>
@@ -490,6 +574,8 @@ onUnmounted(() => {
                 :key="selectedId"
                 :conversation-id="selectedId"
                 :current-user-id="props.currentUserId"
+                :current-space-id="props.currentSpaceId"
+                @focus-node="emit('focus-node', $event)"
             />
 
             <div

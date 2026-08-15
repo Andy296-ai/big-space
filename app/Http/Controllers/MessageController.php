@@ -3,15 +3,30 @@
 namespace App\Http\Controllers;
 
 use App\Events\MessagePosted;
+use App\Models\ActivityLog;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\MessageAttachment;
+use App\Models\Node;
+use App\Models\Space;
+use App\Models\User;
+use App\Notifications\MessagePushNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Str;
 
 class MessageController extends Controller
 {
+    /** [[node:123]] — упоминание узла в теле сообщения, парсится при сохранении/редактировании. */
+    private const MENTION_PATTERN = '/\[\[node:(\d+)\]\]/';
+
+    /** Общий eager-load для отдачи сообщения клиенту — везде одинаковый набор связей. */
+    private const RESPONSE_WITH = ['sender:id,name', 'attachment', 'referencedNodes:id,title,space_id', 'referencedNodes.space:id,slug'];
+
     private const DEFAULT_LIMIT = 50;
 
     private const MAX_LIMIT = 100;
@@ -67,7 +82,7 @@ class MessageController extends Controller
         $beforeId = $request->query('before_id');
 
         $messages = $conversation->messages()
-            ->with(['sender:id,name', 'attachment'])
+            ->with(self::RESPONSE_WITH)
             ->when($beforeId, fn ($q) => $q->where('id', '<', (int) $beforeId))
             ->latest('id')
             ->limit($limit)
@@ -75,7 +90,7 @@ class MessageController extends Controller
             ->reverse()
             ->values();
 
-        return response()->json($messages);
+        return response()->json($this->serializeMany($messages, $request->user()));
     }
 
     public function store(Request $request, Conversation $conversation): JsonResponse
@@ -89,10 +104,81 @@ class MessageController extends Controller
             default => $this->storeTextMessage($request, $conversation),
         };
 
+        $recipientIds = $this->broadcastConversationChanged($conversation, $request->user());
+        $this->sendPushNotifications($recipientIds, $message);
+
+        return response()->json(
+            $this->serialize($message->load(self::RESPONSE_WITH), $request->user()),
+            201,
+        );
+    }
+
+    /**
+     * Редактирование — только автор, без окна по времени (как в Telegram) и
+     * без права root на чужие сообщения: переписать чужие слова — не то же
+     * самое, что их удалить, здесь такого прецедента нигде больше нет.
+     */
+    public function update(Request $request, Conversation $conversation, Message $message): JsonResponse
+    {
+        abort_unless($message->conversation_id === $conversation->id, 404);
+        abort_unless($message->type === Message::TYPE_TEXT, 422);
+        abort_unless($message->deleted_at === null, 404);
+        abort_unless($message->sender_id === $request->user()->id, 403);
+
+        $request->merge(['body' => trim((string) $request->input('body', ''))]);
+
+        $validated = $request->validate([
+            'body' => 'required|string|max:2000',
+        ]);
+
+        $message->update(['body' => $validated['body'], 'edited_at' => now()]);
+
+        // Правка могла добавить или убрать упоминания — sync(), не attach(),
+        // иначе старые ссылки из дотекстовой версии тела просто накапливались бы.
+        $this->syncNodeReferences($message, $validated['body'], $request->user());
+
+        $this->broadcastConversationChanged($conversation, $request->user());
+
+        return response()->json(
+            $this->serialize($message->fresh(self::RESPONSE_WITH), $request->user()),
+        );
+    }
+
+    /**
+     * Удаление — плашка ("сообщение удалено"), не настоящее удаление
+     * строки: root должен продолжать видеть исходное содержимое (см.
+     * serialize()), а факт удаления попадает в аудит-лог. Автор или root —
+     * та же дисциплина, что и у ConversationPolicy::access/Space::isAccessibleBy.
+     */
+    public function destroy(Request $request, Conversation $conversation, Message $message): JsonResponse
+    {
+        abort_unless($message->conversation_id === $conversation->id, 404);
+        abort_unless($message->deleted_at === null, 404);
+
+        $user = $request->user();
+        abort_unless($message->sender_id === $user->id || $user->is_root, 403);
+
+        $message->update(['deleted_at' => now()]);
+
+        ActivityLog::record($user, ActivityLog::ACTION_MESSAGE_DELETED, 'message', $message->id, [
+            'conversation_id' => $conversation->id,
+            'preview' => $message->type === Message::TYPE_TEXT
+                ? Str::limit((string) $message->body, 50)
+                : "[{$message->type}]",
+        ]);
+
+        $this->broadcastConversationChanged($conversation, $user);
+
+        return response()->json(['message' => 'ok']);
+    }
+
+    /** @return array<int, int> */
+    private function broadcastConversationChanged(Conversation $conversation, User $actor): array
+    {
         $conversation->touch();
 
         $recipientIds = $conversation->participants()
-            ->where('user_id', '!=', $request->user()->id)
+            ->where('user_id', '!=', $actor->id)
             ->pluck('users.id')
             ->all();
 
@@ -100,7 +186,121 @@ class MessageController extends Controller
             MessagePosted::dispatch($conversation->id, $recipientIds);
         }
 
-        return response()->json($message->load(['sender:id,name', 'attachment']), 201);
+        return $recipientIds;
+    }
+
+    /**
+     * Пуш только на новые сообщения (store), не на правки/удаления — «кто-то
+     * отредактировал сообщение» не то событие, ради которого стоит будить
+     * телефон. Изолировано try/catch: это внешний сервис (push-провайдеры
+     * браузеров), а не имеет права ронять сохранение и рассылку самого
+     * сообщения — то, что реально критично для функции мессенджера.
+     *
+     * @param  array<int, int>  $recipientIds
+     */
+    private function sendPushNotifications(array $recipientIds, Message $message): void
+    {
+        if ($recipientIds === []) {
+            return;
+        }
+
+        try {
+            Notification::send(
+                User::whereIn('id', $recipientIds)->get(),
+                new MessagePushNotification($message),
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Failed to send web push notifications for a message.', [
+                'message_id' => $message->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Создаёт связи message_node_references по [[node:ID]] в теле. Ссылка
+     * ставится только на узел, пространство которого доступно ОТПРАВИТЕЛЮ —
+     * иначе синтаксис упоминания стал бы оракулом перебора чужих id (кто-то
+     * узнаёт, что узел существует и как называется, просто подставляя ID).
+     * Видимость для ЧИТАТЕЛЕЙ — отдельная проверка, в serialize()/
+     * serializeMany(), потому что участники общего/командного чата не
+     * обязаны разделять доступ к пространствам с отправителем.
+     */
+    private function syncNodeReferences(Message $message, string $body, User $sender): void
+    {
+        preg_match_all(self::MENTION_PATTERN, $body, $matches);
+        $mentionedIds = array_unique(array_map('intval', $matches[1]));
+
+        if ($mentionedIds === []) {
+            $message->referencedNodes()->sync([]);
+
+            return;
+        }
+
+        $nodes = Node::whereIn('id', $mentionedIds)->get(['id', 'space_id']);
+        $accessibleSpaceIds = Space::accessibleAmong($nodes->pluck('space_id'), $sender);
+
+        $allowedNodeIds = $nodes
+            ->filter(fn (Node $n) => in_array($n->space_id, $accessibleSpaceIds, true))
+            ->pluck('id');
+
+        $message->referencedNodes()->sync($allowedNodeIds);
+    }
+
+    /**
+     * Сериализует страницу сообщений разом — доступность пространств
+     * упомянутых узлов считается ОДНИМ батч-запросом на всю страницу
+     * (Space::accessibleAmong), а не по сообщению: иначе это был бы
+     * настоящий N+1 при нескольких упоминаниях на нескольких сообщениях.
+     *
+     * @param  Collection<int, Message>  $messages
+     * @return array<int, array<string, mixed>>
+     */
+    private function serializeMany(Collection $messages, User $viewer): array
+    {
+        $spaceIds = $messages->flatMap(fn (Message $m) => $m->referencedNodes->pluck('space_id'));
+        $accessibleSpaceIds = Space::accessibleAmong($spaceIds, $viewer);
+
+        return $messages->map(fn (Message $m) => $this->serialize($m, $viewer, $accessibleSpaceIds))->all();
+    }
+
+    /**
+     * Единая точка отдачи сообщения клиенту — из неё же и только из неё
+     * должны уходить node_references и content-поля, иначе легко случайно
+     * просочить нефильтрованную связь под другим ключом (см. предупреждение
+     * в плане: голый toArray() отдал бы ВСЮ referencedNodes как есть).
+     *
+     * @param  array<int, int>|null  $accessibleSpaceIds  батч на всю страницу — см. serializeMany(); null для одиночного сообщения (store/update)
+     * @return array<string, mixed>
+     */
+    private function serialize(Message $message, User $viewer, ?array $accessibleSpaceIds = null): array
+    {
+        $accessibleSpaceIds ??= Space::accessibleAmong($message->referencedNodes->pluck('space_id'), $viewer);
+
+        $array = $message->toArray();
+        unset($array['referenced_nodes']);
+
+        $isHiddenTombstone = $message->deleted_at !== null && ! $viewer->is_root;
+
+        if ($isHiddenTombstone) {
+            $array['body'] = null;
+            $array['attachment'] = null;
+            $array['node_references'] = [];
+
+            return $array;
+        }
+
+        $array['node_references'] = $message->referencedNodes
+            ->filter(fn (Node $n) => in_array($n->space_id, $accessibleSpaceIds, true))
+            ->map(fn (Node $n) => [
+                'id' => $n->id,
+                'title' => $n->title,
+                'space_id' => $n->space_id,
+                'space_slug' => $n->space->slug,
+            ])
+            ->values();
+
+        return $array;
     }
 
     private function storeTextMessage(Request $request, Conversation $conversation): Message
@@ -114,11 +314,15 @@ class MessageController extends Controller
             'body' => 'required|string|max:2000',
         ]);
 
-        return $conversation->messages()->create([
+        $message = $conversation->messages()->create([
             'sender_id' => $request->user()->id,
             'type' => Message::TYPE_TEXT,
             'body' => $validated['body'],
         ]);
+
+        $this->syncNodeReferences($message, $validated['body'], $request->user());
+
+        return $message;
     }
 
     private function storeFileMessage(Request $request, Conversation $conversation): Message
