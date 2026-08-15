@@ -5,6 +5,7 @@ import {
     Search,
     Filter,
     MessageCircle,
+    MoreHorizontal,
     Plus,
     RotateCcw,
     Layers,
@@ -14,8 +15,9 @@ import {
     Users,
     Wand2,
     Settings,
+    X,
 } from 'lucide-vue-next';
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { translations } from '../types/settings';
 import type { AppSettings } from '../types/settings';
 import NodusMark from './NodusMark.vue';
@@ -71,6 +73,10 @@ const tagQuery = ref('');
 const createdFrom = ref('');
 const createdTo = ref('');
 const showSearchResults = ref(false);
+// На узких экранах (< md) строка поиска по умолчанию свёрнута в иконку —
+// иначе она навсегда занимала бы отдельную строку в и без того тесном HUD.
+// На md и шире игнорируется: там строка всегда открыта (см. класс в шаблоне).
+const searchExpanded = ref(false);
 
 const searchResults = computed(() => {
     if (!searchQuery.value.trim()) {
@@ -120,6 +126,54 @@ function focusSearch() {
 }
 
 defineExpose({ focusSearch });
+
+/**
+ * Меню "ещё" — узкие экраны (< md): второстепенные действия сворачиваются
+ * сюда, чтобы верхний бар не переполнялся. Тот же приём, что и у
+ * NotificationBell.vue: Teleport в body + позиция считается вручную через
+ * getBoundingClientRect(), а не CSS-абсолютом внутри пилюли — у пилюль тут
+ * свой backdrop-blur, который создаёт отдельный stacking context и иначе
+ * обрезал бы выпадашку (см. комментарий в самом NotificationBell.vue).
+ */
+const moreMenuOpen = ref(false);
+const moreMenuPos = ref({ top: 0, left: 0 });
+const moreButtonEl = ref<HTMLDivElement | null>(null);
+const moreDropdownEl = ref<HTMLDivElement | null>(null);
+
+function toggleMoreMenu() {
+    if (!moreMenuOpen.value && moreButtonEl.value) {
+        const rect = moreButtonEl.value.getBoundingClientRect();
+        moreMenuPos.value = { top: rect.bottom + 8, left: rect.right - 288 };
+    }
+
+    moreMenuOpen.value = !moreMenuOpen.value;
+}
+
+function closeMoreMenu() {
+    moreMenuOpen.value = false;
+}
+
+function selectMoreMenuAction(action: () => void) {
+    action();
+    closeMoreMenu();
+}
+
+function handleMoreMenuClickOutside(event: MouseEvent) {
+    const target = event.target as Node;
+
+    if (
+        moreMenuOpen.value &&
+        !moreButtonEl.value?.contains(target) &&
+        !moreDropdownEl.value?.contains(target)
+    ) {
+        closeMoreMenu();
+    }
+}
+
+onMounted(() => document.addEventListener('click', handleMoreMenuClickOutside));
+onUnmounted(() =>
+    document.removeEventListener('click', handleMoreMenuClickOutside),
+);
 </script>
 
 <template>
@@ -157,10 +211,10 @@ defineExpose({ focusSearch });
                     </button>
                 </div>
             </div>
-            <div class="mx-1 h-6 w-px bg-slate-700" />
+            <div class="mx-1 h-6 w-px bg-slate-700 max-md:hidden" />
             <button
                 @click="emit('open-global-search')"
-                class="rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
+                class="rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white max-md:hidden"
                 :title="`${t.globalSearchAction} (Ctrl/⌘ K)`"
             >
                 <Telescope class="h-4 w-4" />
@@ -168,7 +222,7 @@ defineExpose({ focusSearch });
             <button
                 v-if="isRoot"
                 @click="emit('open-activity-log')"
-                class="rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
+                class="rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white max-md:hidden"
                 :title="t.activityLogAction"
             >
                 <ScrollText class="h-4 w-4" />
@@ -176,7 +230,7 @@ defineExpose({ focusSearch });
             <button
                 v-if="isRoot"
                 @click="emit('open-team-manager')"
-                class="rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
+                class="rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white max-md:hidden"
                 :title="t.teamManagerAction"
             >
                 <Users class="h-4 w-4" />
@@ -184,12 +238,14 @@ defineExpose({ focusSearch });
             <button
                 v-if="canViewSpaceActivity"
                 @click="emit('open-space-activity-log')"
-                class="rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
+                class="rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white max-md:hidden"
                 :title="t.spaceActivityLogAction"
             >
                 <Activity class="h-4 w-4" />
             </button>
-            <NotificationBell />
+            <div class="max-md:hidden">
+                <NotificationBell />
+            </div>
             <button
                 @click="emit('open-messenger')"
                 class="relative rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
@@ -205,26 +261,171 @@ defineExpose({ focusSearch });
             </button>
             <button
                 @click="emit('open-settings-modal')"
-                class="rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
+                class="rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white max-md:hidden"
                 :title="t.settingsTitle"
             >
                 <Settings class="h-4 w-4" />
             </button>
             <button
                 @click="signOut"
-                class="rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:border-rose-500/40 hover:bg-rose-600/20 hover:text-rose-300"
+                class="rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:border-rose-500/40 hover:bg-rose-600/20 hover:text-rose-300 max-md:hidden"
                 :title="t.signOut"
             >
                 <LogOut class="h-4 w-4" />
             </button>
+
+            <!-- "Ещё": на узких экранах (< md) сюда сворачивается всё выше, что скрыто max-md:hidden -->
+            <div ref="moreButtonEl" class="md:hidden">
+                <button
+                    @click="toggleMoreMenu"
+                    class="rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
+                    :title="t.moreActionsLabel"
+                >
+                    <MoreHorizontal class="h-4 w-4" />
+                </button>
+            </div>
         </div>
 
+        <Teleport to="body">
+            <div
+                v-if="moreMenuOpen"
+                ref="moreDropdownEl"
+                :style="{
+                    top: `${moreMenuPos.top}px`,
+                    left: `${moreMenuPos.left}px`,
+                }"
+                class="fixed z-50 w-72 max-w-[calc(100vw-2rem)] space-y-0.5 overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-900/95 p-1.5 shadow-2xl backdrop-blur-md"
+            >
+                <button
+                    @click="
+                        selectMoreMenuAction(() => emit('open-global-search'))
+                    "
+                    class="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-semibold text-slate-200 transition-colors hover:bg-slate-800"
+                >
+                    <Telescope class="h-4 w-4 text-slate-400" />
+                    <span>{{ t.globalSearchAction }}</span>
+                </button>
+                <button
+                    v-if="isRoot"
+                    @click="
+                        selectMoreMenuAction(() => emit('open-activity-log'))
+                    "
+                    class="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-semibold text-slate-200 transition-colors hover:bg-slate-800"
+                >
+                    <ScrollText class="h-4 w-4 text-slate-400" />
+                    <span>{{ t.activityLogAction }}</span>
+                </button>
+                <button
+                    v-if="isRoot"
+                    @click="
+                        selectMoreMenuAction(() => emit('open-team-manager'))
+                    "
+                    class="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-semibold text-slate-200 transition-colors hover:bg-slate-800"
+                >
+                    <Users class="h-4 w-4 text-slate-400" />
+                    <span>{{ t.teamManagerAction }}</span>
+                </button>
+                <button
+                    v-if="canViewSpaceActivity"
+                    @click="
+                        selectMoreMenuAction(() =>
+                            emit('open-space-activity-log'),
+                        )
+                    "
+                    class="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-semibold text-slate-200 transition-colors hover:bg-slate-800"
+                >
+                    <Activity class="h-4 w-4 text-slate-400" />
+                    <span>{{ t.spaceActivityLogAction }}</span>
+                </button>
+                <div
+                    class="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-200"
+                >
+                    <NotificationBell />
+                    <span>{{ t.notificationsAction }}</span>
+                </div>
+                <button
+                    @click="
+                        selectMoreMenuAction(() => emit('open-settings-modal'))
+                    "
+                    class="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-semibold text-slate-200 transition-colors hover:bg-slate-800"
+                >
+                    <Settings class="h-4 w-4 text-slate-400" />
+                    <span>{{ t.settingsTitle }}</span>
+                </button>
+                <button
+                    @click="selectMoreMenuAction(signOut)"
+                    class="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-semibold text-rose-300 transition-colors hover:bg-rose-600/20"
+                >
+                    <LogOut class="h-4 w-4" />
+                    <span>{{ t.signOut }}</span>
+                </button>
+
+                <template v-if="presenceUsers.length || settings.showStats">
+                    <div class="my-1 h-px bg-slate-800" />
+                    <div
+                        v-if="presenceUsers.length"
+                        class="flex items-center gap-2 px-3 py-2 text-[11px] text-slate-400"
+                        :title="presenceUsers.map((u) => u.name).join(', ')"
+                    >
+                        <div class="flex -space-x-2">
+                            <span
+                                v-for="u in presenceUsers.slice(0, 4)"
+                                :key="u.id"
+                                class="flex h-5 w-5 items-center justify-center rounded-full border-2 border-slate-900 bg-emerald-600 text-[9px] font-bold text-white uppercase"
+                            >
+                                {{ u.name.slice(0, 2) }}
+                            </span>
+                        </div>
+                        <span>{{
+                            presenceUsers.map((u) => u.name).join(', ')
+                        }}</span>
+                    </div>
+                    <div
+                        v-if="settings.showStats"
+                        class="flex items-center gap-3 px-3 py-2 text-[11px] text-slate-400"
+                    >
+                        <div class="flex items-center gap-1.5">
+                            <Layers class="h-3.5 w-3.5 text-blue-400" />
+                            <span class="font-bold text-slate-200">{{
+                                nodes.length
+                            }}</span>
+                            {{ t.nodes }}
+                        </div>
+                        <div>
+                            <span class="font-bold text-slate-200">{{
+                                edgesCount
+                            }}</span>
+                            {{ t.edges }}
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </Teleport>
+
         <!-- Center: Search Bar & Auto-Focus -->
-        <div class="pointer-events-auto relative w-full max-w-md">
+        <!-- На мобильном по умолчанию свёрнуто в иконку — сама строка вечно
+             занимала бы отдельную строку HUD на узком экране. -->
+        <button
+            v-if="!searchExpanded"
+            @click="
+                searchExpanded = true;
+                focusSearch();
+            "
+            class="pointer-events-auto rounded-2xl border border-slate-700/60 bg-slate-900/80 p-2.5 text-slate-300 shadow-xl backdrop-blur-md transition-colors hover:bg-slate-800 hover:text-white md:hidden"
+            :title="t.globalSearchAction"
+        >
+            <Search class="h-4 w-4" />
+        </button>
+        <div
+            :class="[
+                'pointer-events-auto relative w-full max-w-md',
+                searchExpanded ? 'block' : 'hidden md:block',
+            ]"
+        >
             <div
                 class="flex items-center gap-2 rounded-2xl border border-slate-700/60 bg-slate-900/80 px-3 py-2 text-slate-200 shadow-xl backdrop-blur-md"
             >
-                <Search class="h-4 w-4 text-slate-400" />
+                <Search class="h-4 w-4 shrink-0 text-slate-400" />
                 <input
                     ref="searchInputRef"
                     v-model="searchQuery"
@@ -237,7 +438,7 @@ defineExpose({ focusSearch });
                 <button
                     @click="isFilterOpen = !isFilterOpen"
                     :class="[
-                        'rounded-xl border p-1.5 transition-colors',
+                        'shrink-0 rounded-xl border p-1.5 transition-colors',
                         isFilterOpen
                             ? 'border-blue-500 bg-blue-600/30 text-blue-300'
                             : 'border-slate-700 bg-slate-800/60 text-slate-400 hover:text-slate-200',
@@ -245,6 +446,17 @@ defineExpose({ focusSearch });
                     :title="t.filterTitle"
                 >
                     <Filter class="h-4 w-4" />
+                </button>
+                <button
+                    @click="
+                        searchExpanded = false;
+                        showSearchResults = false;
+                        isFilterOpen = false;
+                    "
+                    class="shrink-0 rounded-xl p-1.5 text-slate-400 transition-colors hover:text-slate-200 md:hidden"
+                    :aria-label="t.close"
+                >
+                    <X class="h-4 w-4" />
                 </button>
             </div>
 
@@ -278,7 +490,7 @@ defineExpose({ focusSearch });
             <!-- Filter Panel Popup -->
             <div
                 v-if="isFilterOpen"
-                class="absolute top-full right-0 z-30 mt-2 w-72 space-y-3 rounded-2xl border border-slate-700/80 bg-slate-900/95 p-4 text-slate-200 shadow-2xl backdrop-blur-md"
+                class="absolute top-full right-0 z-30 mt-2 w-72 max-w-[calc(100vw-2rem)] space-y-3 rounded-2xl border border-slate-700/80 bg-slate-900/95 p-4 text-slate-200 shadow-2xl backdrop-blur-md"
             >
                 <div
                     class="text-xs font-bold tracking-wider text-slate-400 uppercase"
@@ -352,7 +564,7 @@ defineExpose({ focusSearch });
             <!-- Кто ещё сейчас смотрит это пространство -->
             <div
                 v-if="presenceUsers.length"
-                class="hidden items-center -space-x-2 rounded-2xl border border-slate-700/60 bg-slate-900/80 py-1.5 pr-3 pl-1.5 shadow-xl backdrop-blur-md sm:flex"
+                class="hidden items-center -space-x-2 rounded-2xl border border-slate-700/60 bg-slate-900/80 py-1.5 pr-3 pl-1.5 shadow-xl backdrop-blur-md md:flex"
                 :title="presenceUsers.map((u) => u.name).join(', ')"
             >
                 <span
@@ -373,7 +585,7 @@ defineExpose({ focusSearch });
             <!-- Stats Pill -->
             <div
                 v-if="settings.showStats"
-                class="hidden items-center gap-3 rounded-2xl border border-slate-700/60 bg-slate-900/80 px-4 py-2.5 text-xs text-slate-300 shadow-xl backdrop-blur-md sm:flex"
+                class="hidden items-center gap-3 rounded-2xl border border-slate-700/60 bg-slate-900/80 px-4 py-2.5 text-xs text-slate-300 shadow-xl backdrop-blur-md md:flex"
             >
                 <div class="flex items-center gap-1.5">
                     <Layers class="h-4 w-4 text-blue-400" />

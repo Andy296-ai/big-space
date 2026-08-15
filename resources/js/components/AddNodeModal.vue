@@ -139,6 +139,7 @@ function handleSubmit() {
 <template>
     <div
         class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md"
+        @click.self="emit('close')"
     >
         <div
             class="animate-in fade-in zoom-in-95 flex max-h-[90vh] w-full max-w-md flex-col rounded-3xl border border-slate-700/80 bg-slate-900 text-slate-100 shadow-2xl duration-200"

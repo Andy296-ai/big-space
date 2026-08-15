@@ -191,6 +191,14 @@ export function applyTheme(settings: AppSettings): void {
     root.dataset.theme = settings.theme;
     root.lang = settings.lang;
     root.dir = RTL_LANGUAGES.includes(settings.lang) ? 'rtl' : 'ltr';
+
+    // Тема здесь — явный выбор через data-theme, не prefers-color-scheme,
+    // поэтому статичного <meta name="theme-color"> в app.blade.php мало:
+    // держим его в синхроне при каждой смене темы (влияет на цвет системной
+    // строки состояния / браузерного хрома при установке как PWA).
+    document
+        .querySelector('meta[name="theme-color"]')
+        ?.setAttribute('content', THEME_TOKENS[settings.theme].canvasBg);
 }
 
 export type TranslationKeys = {
@@ -435,6 +443,7 @@ export type TranslationKeys = {
     shortcutAddNode: string;
     shortcutEdit: string;
     shortcutLink: string;
+    shortcutSubtreeDrag: string;
     shortcutDelete: string;
     shortcutUndo: string;
     shortcutAutoLayout: string;
@@ -442,6 +451,7 @@ export type TranslationKeys = {
     compactHudLabel: string;
     resetSettings: string;
     close: string;
+    moreActionsLabel: string;
     filterTitle: string;
     maxDepthLabel: string;
     maxDepthPlaceholder: string;
@@ -517,6 +527,7 @@ export type TranslationKeys = {
     teamManagerRemoveMemberAction: string;
     teamManagerNoMembers: string;
     teamManagerLoadError: string;
+    messengerBackAction: string;
 };
 
 export const translations: Record<Language, TranslationKeys> = {
@@ -777,6 +788,7 @@ export const translations: Record<Language, TranslationKeys> = {
         shortcutAddNode: 'Add child (root if nothing selected)',
         shortcutEdit: 'Edit selected node',
         shortcutLink: 'Link selected node',
+        shortcutSubtreeDrag: 'Drag node with its whole subtree',
         shortcutDelete: 'Delete selected node',
         shortcutUndo: 'Undo last delete',
         shortcutAutoLayout: 'Auto-organize layout',
@@ -784,6 +796,7 @@ export const translations: Record<Language, TranslationKeys> = {
         compactHudLabel: 'Compact Toolbar',
         resetSettings: 'Reset to Defaults',
         close: 'Close',
+        moreActionsLabel: 'More',
         filterTitle: 'Node Filters',
         maxDepthLabel: 'Max Depth',
         maxDepthPlaceholder: 'No depth limit',
@@ -862,6 +875,7 @@ export const translations: Record<Language, TranslationKeys> = {
         teamManagerRemoveMemberAction: 'Remove from team',
         teamManagerNoMembers: 'No members yet.',
         teamManagerLoadError: 'Something went wrong. Please try again.',
+        messengerBackAction: 'Back',
     },
     ru: {
         currentSpace: 'Текущее пространство',
@@ -1122,6 +1136,7 @@ export const translations: Record<Language, TranslationKeys> = {
         shortcutAddNode: 'Добавить потомка (корень, если ничего не выбрано)',
         shortcutEdit: 'Редактировать выбранный узел',
         shortcutLink: 'Связать выбранный узел',
+        shortcutSubtreeDrag: 'Перетащить узел вместе с поддеревом',
         shortcutDelete: 'Удалить выбранный узел',
         shortcutUndo: 'Отменить последнее удаление',
         shortcutAutoLayout: 'Авто-упорядочивание',
@@ -1129,6 +1144,7 @@ export const translations: Record<Language, TranslationKeys> = {
         compactHudLabel: 'Компактная панель',
         resetSettings: 'Сбросить настройки',
         close: 'Закрыть',
+        moreActionsLabel: 'Ещё',
         filterTitle: 'Фильтры узлов',
         maxDepthLabel: 'Макс. глубина',
         maxDepthPlaceholder: 'Без ограничения',
@@ -1208,6 +1224,7 @@ export const translations: Record<Language, TranslationKeys> = {
         teamManagerRemoveMemberAction: 'Убрать из команды',
         teamManagerNoMembers: 'Пока нет участников.',
         teamManagerLoadError: 'Что-то пошло не так. Попробуйте ещё раз.',
+        messengerBackAction: 'Назад',
     },
     tg: {
         currentSpace: 'Фазои ҷорӣ',
@@ -1469,6 +1486,7 @@ export const translations: Record<Language, TranslationKeys> = {
             'Иловаи фарзанд (реша, агар чизе интихоб нашуда бошад)',
         shortcutEdit: 'Таҳрири гузари интихобшуда',
         shortcutLink: 'Пайванди гузари интихобшуда',
+        shortcutSubtreeDrag: 'Кашидани гузар бо тамоми зершохааш',
         shortcutDelete: 'Нест кардани гузари интихобшуда',
         shortcutUndo: 'Бекор кардани нести охирин',
         shortcutAutoLayout: 'Тартиби худкор',
@@ -1476,6 +1494,7 @@ export const translations: Record<Language, TranslationKeys> = {
         compactHudLabel: 'Панели компакт',
         resetSettings: 'Барқарорсозии пешфарз',
         close: 'Пӯшидан',
+        moreActionsLabel: 'Боз',
         filterTitle: 'Филтрҳои гузар',
         maxDepthLabel: 'Амиқии макс.',
         maxDepthPlaceholder: 'Бе маҳдудият',
@@ -1555,6 +1574,7 @@ export const translations: Record<Language, TranslationKeys> = {
         teamManagerRemoveMemberAction: 'Бартараф аз даста',
         teamManagerNoMembers: 'Ҳанӯз аъзо нест.',
         teamManagerLoadError: 'Хатоги рӯй дод. Бори дигар кӯшиш кунед.',
+        messengerBackAction: 'Бозгашт',
     },
     fa: {
         currentSpace: 'فضای فعلی',
@@ -1813,6 +1833,7 @@ export const translations: Record<Language, TranslationKeys> = {
         shortcutAddNode: 'افزودن فرزند (ریشه، اگر چیزی انتخاب نشده باشد)',
         shortcutEdit: 'ویرایش گره انتخاب‌شده',
         shortcutLink: 'اتصال گره انتخاب‌شده',
+        shortcutSubtreeDrag: 'کشیدن گره همراه با کل زیرشاخه‌اش',
         shortcutDelete: 'حذف گره انتخاب‌شده',
         shortcutUndo: 'بازگردانی آخرین حذف',
         shortcutAutoLayout: 'چیدمان خودکار',
@@ -1820,6 +1841,7 @@ export const translations: Record<Language, TranslationKeys> = {
         compactHudLabel: 'نوار ابزار فشرده',
         resetSettings: 'بازنشانی به پیش‌فرض',
         close: 'بستن',
+        moreActionsLabel: 'بیشتر',
         filterTitle: 'فیلتر گره‌ها',
         maxDepthLabel: 'حداکثر عمق',
         maxDepthPlaceholder: 'بدون محدودیت',
@@ -1897,5 +1919,6 @@ export const translations: Record<Language, TranslationKeys> = {
         teamManagerRemoveMemberAction: 'حذف از تیم',
         teamManagerNoMembers: 'هنوز عضوی نیست.',
         teamManagerLoadError: 'خطایی رخ داد. دوباره تلاش کنید.',
+        messengerBackAction: 'بازگشت',
     },
 };

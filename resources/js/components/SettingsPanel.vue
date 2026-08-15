@@ -173,6 +173,7 @@ const shortcuts: { keys: string; labelKey: TranslationKey }[] = [
     { keys: 'N', labelKey: 'shortcutAddNode' },
     { keys: 'E', labelKey: 'shortcutEdit' },
     { keys: 'L', labelKey: 'shortcutLink' },
+    { keys: 'RMB / Long-press', labelKey: 'shortcutSubtreeDrag' },
     { keys: 'Delete', labelKey: 'shortcutDelete' },
     { keys: 'Ctrl/⌘ Z', labelKey: 'shortcutUndo' },
     { keys: 'A', labelKey: 'shortcutAutoLayout' },

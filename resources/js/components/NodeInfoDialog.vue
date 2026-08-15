@@ -219,7 +219,7 @@ onBeforeUnmount(() => destroyMap());
 <template>
     <div
         v-if="node"
-        class="animate-in fade-in slide-in-from-bottom-4 absolute bottom-6 left-6 z-20 flex max-h-[calc(100vh-9rem)] w-80 flex-col rounded-3xl border border-slate-700/80 bg-slate-900/90 text-slate-100 shadow-2xl backdrop-blur-xl duration-200 sm:w-96"
+        class="animate-in fade-in slide-in-from-bottom-4 absolute bottom-6 left-6 z-20 flex max-h-[calc(100vh-9rem)] w-80 flex-col rounded-3xl border border-slate-700/80 bg-slate-900/90 text-slate-100 shadow-2xl backdrop-blur-xl duration-200 max-md:fixed max-md:inset-x-0 max-md:top-0 max-md:bottom-auto max-md:z-30 max-md:h-dvh max-md:max-h-none max-md:w-full max-md:max-w-none max-md:rounded-none sm:w-96"
     >
         <!-- Шапка -->
         <div class="flex items-start justify-between gap-3 p-5 pb-3">

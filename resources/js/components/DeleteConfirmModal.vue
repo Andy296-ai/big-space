@@ -38,9 +38,10 @@ onMounted(async () => {
 <template>
     <div
         class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md"
+        @click.self="emit('close')"
     >
         <div
-            class="animate-in fade-in zoom-in-95 w-full max-w-md space-y-5 rounded-3xl border border-slate-700/80 bg-slate-900 p-6 text-slate-100 shadow-2xl duration-200"
+            class="animate-in fade-in zoom-in-95 max-h-[90vh] w-full max-w-md space-y-5 overflow-y-auto rounded-3xl border border-slate-700/80 bg-slate-900 p-6 text-slate-100 shadow-2xl duration-200"
         >
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2.5">

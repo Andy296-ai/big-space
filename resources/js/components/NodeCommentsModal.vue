@@ -142,7 +142,7 @@ const canPost = computed(() => newBody.value.trim().length > 0);
             @click.self="emit('close')"
         >
             <div
-                class="flex h-[75vh] w-[92vw] max-w-lg flex-col overflow-hidden rounded-3xl border border-slate-700/80 bg-slate-900 text-slate-100 shadow-2xl"
+                class="flex h-[75dvh] w-[92vw] max-w-lg flex-col overflow-hidden rounded-3xl border border-slate-700/80 bg-slate-900 text-slate-100 shadow-2xl"
             >
                 <div
                     class="flex items-center justify-between gap-3 border-b border-slate-800 px-5 py-3.5"

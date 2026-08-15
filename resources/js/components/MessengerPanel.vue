@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { Globe2, Loader2, Plus, Search, Users, X } from 'lucide-vue-next';
+import {
+    ArrowLeft,
+    Globe2,
+    Loader2,
+    Plus,
+    Search,
+    Users,
+    X,
+} from 'lucide-vue-next';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { apiFetch } from '../lib/api';
 import { getEcho } from '../lib/echo';
@@ -70,6 +78,36 @@ const filteredTeammates = computed(() => {
             (q === '' || m.name.toLowerCase().includes(q)),
     );
 });
+
+// На мобильном (< md) рейл и правая часть — два отдельных экрана, а не
+// колонки рядом: правая часть видна, только когда реально есть что в ней
+// показать (выбран разговор, либо открыт подбор нового собеседника).
+const showRightPane = computed(
+    () => selectedId.value !== null || showStartDirect.value,
+);
+
+const selectedConversationTitle = computed(() => {
+    const conversation = conversations.value.find(
+        (c) => c.id === selectedId.value,
+    );
+
+    if (!conversation) {
+        return '';
+    }
+
+    if (conversation.type === 'global') {
+        return t.value.messengerGlobalChat;
+    }
+
+    return conversation.type === 'team'
+        ? (conversation.team?.name ?? '')
+        : (conversation.direct_with?.name ?? '');
+});
+
+function goBack() {
+    selectedId.value = null;
+    showStartDirect.value = false;
+}
 
 function previewFor(conversation: ConversationSummary): string {
     if (!conversation.last_message) {
@@ -169,11 +207,15 @@ onUnmounted(() => {
 
 <template>
     <div
-        class="animate-in fade-in slide-in-from-right-4 pointer-events-auto absolute top-20 right-4 bottom-6 z-20 flex w-[640px] max-w-[92vw] overflow-hidden rounded-3xl border border-slate-700/80 bg-slate-900/90 text-slate-100 shadow-2xl backdrop-blur-xl duration-200"
+        class="animate-in fade-in slide-in-from-right-4 pointer-events-auto absolute top-20 right-4 bottom-6 z-20 flex w-[640px] max-w-[92vw] overflow-hidden rounded-3xl border border-slate-700/80 bg-slate-900/90 text-slate-100 shadow-2xl backdrop-blur-xl duration-200 max-md:fixed max-md:inset-x-0 max-md:top-0 max-md:bottom-auto max-md:z-30 max-md:h-dvh max-md:w-full max-md:max-w-none max-md:rounded-none"
     >
-        <!-- Левая колонка: список разговоров -->
+        <!-- Левая колонка: список разговоров. На мобильном — отдельный экран,
+             скрывается, когда справа есть что показать (см. showRightPane). -->
         <div
-            class="flex w-[230px] shrink-0 flex-col border-e border-slate-800 bg-slate-950/40"
+            :class="[
+                'flex w-[230px] shrink-0 flex-col border-e border-slate-800 bg-slate-950/40',
+                showRightPane ? 'max-md:hidden' : 'max-md:flex max-md:w-full',
+            ]"
         >
             <div class="flex items-center justify-between gap-2 px-4 py-3.5">
                 <h3 class="text-sm font-bold text-slate-100">
@@ -356,11 +398,38 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <!-- Правая часть: активный тред, либо панель выбора собеседника -->
-        <div class="flex min-h-0 flex-1 flex-col">
+        <!-- Правая часть: активный тред, либо панель выбора собеседника. На
+             мобильном — отдельный экран поверх рейла (см. showRightPane). -->
+        <div
+            :class="[
+                'flex min-h-0 flex-1 flex-col',
+                showRightPane ? 'max-md:flex' : 'max-md:hidden',
+            ]"
+        >
+            <!-- Шапка "назад" — только на мобильном, на десктопе рейл слева и так виден. -->
+            <div
+                v-if="showRightPane"
+                class="flex items-center gap-2 border-b border-slate-800 px-3 py-2.5 md:hidden"
+            >
+                <button
+                    @click="goBack"
+                    :aria-label="t.messengerBackAction"
+                    class="shrink-0 rounded-xl p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200"
+                >
+                    <ArrowLeft class="h-4 w-4" />
+                </button>
+                <span class="truncate text-xs font-bold text-slate-200">
+                    {{
+                        showStartDirect
+                            ? t.messengerStartDirectAction
+                            : selectedConversationTitle
+                    }}
+                </span>
+            </div>
+
             <template v-if="showStartDirect">
                 <div
-                    class="flex items-center gap-2 border-b border-slate-800 px-4 py-3.5"
+                    class="flex items-center gap-2 border-b border-slate-800 px-4 py-3.5 max-md:hidden"
                 >
                     <Users class="h-4 w-4 text-slate-400" />
                     <h4 class="text-xs font-bold text-slate-200">

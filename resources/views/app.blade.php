@@ -8,6 +8,17 @@
         <link rel="icon" href="/favicon.svg" type="image/svg+xml">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
+        {{-- "Добавить на экран домой" — без service worker, только манифест и иконки
+             (см. план: офлайн-кэш сознательно отложен до появления боевого домена). --}}
+        <link rel="manifest" href="/manifest.json">
+        {{-- Стартовое значение — фон темы cosmic по умолчанию; applyTheme() в
+             settings.ts держит его в синхроне при смене темы в рантайме,
+             т.к. тут независимая от prefers-color-scheme, явная система тем. --}}
+        <meta name="theme-color" content="#0f172a">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+        <meta name="apple-mobile-web-app-title" content="Nodus">
+
         {{-- Конвенция Vite: dev-сервер читает этот тег и подписывает им инжектируемые <style> в HMR. --}}
         <meta property="csp-nonce" nonce="{{ Illuminate\Support\Facades\Vite::cspNonce() }}">
 

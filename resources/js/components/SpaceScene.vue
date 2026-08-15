@@ -146,6 +146,29 @@ let draggedNodeId: number | null = null;
 let dragOffset = { x: 0, y: 0 };
 let pointerStart = { x: 0, y: 0 };
 
+// Все активные касания, по pointerId — второй палец переключает жест в
+// pinch (см. onPointerDown/onPointerMove/onPointerUp), сколько бы их ни
+// было одновременно. Мышь/перо тоже сюда попадают, но их обычно ровно один.
+const activePointers = new Map<number, { x: number; y: number }>();
+let lastPointerType: 'mouse' | 'touch' | 'pen' = 'mouse';
+let pinchPrevDist = 0;
+let pinchPrevMid = { x: 0, y: 0 };
+
+// Минимальный радиус попадания в узел — у тача палец толще курсора, целиться
+// в мелкий/отдалённый узел иначе почти невозможно.
+const HIT_RADIUS_MOUSE = 11;
+const HIT_RADIUS_TOUCH = 22;
+
+// Долгое нажатие пальцем — замена правой кнопке (перетаскивание поддерева):
+// у тача нет второй кнопки, единственный триггер — таймер плюс порог сдвига,
+// чтобы обычный быстрый драг узла не превращался в него на середине жеста.
+const LONG_PRESS_MS = 450;
+const LONG_PRESS_MOVE_THRESHOLD = 10;
+let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+let longPressNode: NodeData | null = null;
+let longPressWorld = { x: 0, y: 0 };
+let longPressStartScreen = { x: 0, y: 0 };
+
 // Правая кнопка тащит узел вместе со всем его поддеревом, а не только его
 // самого — см. onPointerDown/onPointerMove/onPointerUp ниже. Поддерево не
 // прилипает к курсору жёстко: курсор задаёт цель (dragTargetWorld), а сама
@@ -292,12 +315,15 @@ function screenToWorld(sx: number, sy: number) {
 }
 
 function nodeAt(wx: number, wy: number): NodeData | null {
+    const hitFloorPx =
+        lastPointerType === 'touch' ? HIT_RADIUS_TOUCH : HIT_RADIUS_MOUSE;
+
     // С конца: нарисованные поверх перехватывают клик первыми.
     for (let i = props.nodes.length - 1; i >= 0; i--) {
         const n = props.nodes[i];
         // На отдалении кружок меньше пары пикселей, поэтому область попадания
         // не даём ужать ниже разумного минимума.
-        const hit = Math.max(nodeRadius(n), 11 / camera.scale);
+        const hit = Math.max(nodeRadius(n), hitFloorPx / camera.scale);
 
         if ((wx - n.pos_x) ** 2 + (wy - n.pos_y) ** 2 <= hit ** 2) {
             return n;
@@ -931,7 +957,91 @@ function applyMagneticPush() {
     });
 }
 
+/** Прерывает уже идущий одиночный жест, ничего не коммитя, — для входа в pinch. */
+function abortSingleGesture() {
+    cancelLongPress();
+    isPanning = false;
+    draggedNodeId = null;
+    draggedSubtreeIds = null;
+    subtreeRelativeOffsets = null;
+    allNodeById = null;
+    otherTreeGroups = null;
+    otherTreeAABB = null;
+    touchedTreeKeys = null;
+}
+
+function pointerDistance(
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+): number {
+    return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function pointerMidpoint(
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+) {
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+function beginPinch() {
+    abortSingleGesture();
+
+    const pts = Array.from(activePointers.values()).slice(0, 2);
+    pinchPrevDist = pointerDistance(pts[0], pts[1]);
+    pinchPrevMid = pointerMidpoint(pts[0], pts[1]);
+}
+
+function cancelLongPress() {
+    if (longPressTimer !== null) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+    }
+
+    longPressNode = null;
+}
+
+/** Долгое нажатие пальцем поверх узла — переключает обычный драг узла на драг поддерева (см. константы выше). */
+function armLongPress(
+    node: NodeData,
+    world: { x: number; y: number },
+    screenX: number,
+    screenY: number,
+) {
+    longPressNode = node;
+    longPressWorld = world;
+    longPressStartScreen = { x: screenX, y: screenY };
+
+    longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+
+        // Успел сдвинуться дальше порога до срабатывания — это уже обычный
+        // драг узла, не подменяем его посреди жеста.
+        if (longPressNode === null || draggedNodeId !== longPressNode.id) {
+            return;
+        }
+
+        const node2 = longPressNode;
+        draggedNodeId = null;
+        beginSubtreeDrag(node2, longPressWorld);
+        navigator.vibrate?.(10);
+    }, LONG_PRESS_MS);
+}
+
 function onPointerDown(event: PointerEvent) {
+    lastPointerType = event.pointerType as typeof lastPointerType;
+    activePointers.set(event.pointerId, {
+        x: event.clientX,
+        y: event.clientY,
+    });
+    (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
+
+    if (activePointers.size >= 2) {
+        beginPinch();
+
+        return;
+    }
+
     if (draggedNodeId !== null || draggedSubtreeIds !== null || isPanning) {
         return;
     }
@@ -958,17 +1068,76 @@ function onPointerDown(event: PointerEvent) {
         } else if (event.button === 0 && props.canEdit) {
             draggedNodeId = node.id;
             dragOffset = { x: world.x - node.pos_x, y: world.y - node.pos_y };
+
+            if (event.pointerType === 'touch') {
+                armLongPress(node, world, event.clientX, event.clientY);
+            }
         }
     } else {
         emit('select-node', null);
         isPanning = true;
         pointerStart = { x: event.clientX, y: event.clientY };
     }
+}
 
-    (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
+/** Тот же приём переноса якоря камеры, что и в onWheel, только источник — пара пальцев, а не колесо. */
+function updatePinch() {
+    const pts = Array.from(activePointers.values()).slice(0, 2);
+    const dist = pointerDistance(pts[0], pts[1]);
+    const mid = pointerMidpoint(pts[0], pts[1]);
+    const rect = canvasRef.value?.getBoundingClientRect();
+
+    if (!rect || pinchPrevDist === 0) {
+        pinchPrevDist = dist;
+        pinchPrevMid = mid;
+
+        return;
+    }
+
+    const anchor = screenToWorld(mid.x - rect.left, mid.y - rect.top);
+    const next = Math.min(
+        MAX_SCALE,
+        Math.max(MIN_SCALE, cameraTarget.scale * (dist / pinchPrevDist)),
+    );
+    const ratio = 1 - cameraTarget.scale / next;
+
+    cameraTarget.x += (anchor.x - cameraTarget.x) * ratio;
+    cameraTarget.y += (anchor.y - cameraTarget.y) * ratio;
+    cameraTarget.scale = next;
+
+    // Сдвиг середины между пальцами поверх зума — так же, как обычный pan.
+    cameraTarget.x -= (mid.x - pinchPrevMid.x) / camera.scale;
+    cameraTarget.y += (mid.y - pinchPrevMid.y) / camera.scale;
+
+    pinchPrevDist = dist;
+    pinchPrevMid = mid;
 }
 
 function onPointerMove(event: PointerEvent) {
+    if (activePointers.has(event.pointerId)) {
+        activePointers.set(event.pointerId, {
+            x: event.clientX,
+            y: event.clientY,
+        });
+    }
+
+    if (activePointers.size >= 2) {
+        updatePinch();
+
+        return;
+    }
+
+    if (longPressTimer !== null) {
+        const moved = Math.hypot(
+            event.clientX - longPressStartScreen.x,
+            event.clientY - longPressStartScreen.y,
+        );
+
+        if (moved > LONG_PRESS_MOVE_THRESHOLD) {
+            cancelLongPress();
+        }
+    }
+
     const rect = canvasRef.value?.getBoundingClientRect();
 
     if (!rect) {
@@ -1021,7 +1190,16 @@ function onPointerMove(event: PointerEvent) {
     }
 }
 
-function onPointerUp() {
+function onPointerUp(event: PointerEvent) {
+    activePointers.delete(event.pointerId);
+    cancelLongPress();
+
+    if (activePointers.size >= 2) {
+        // Остались как минимум два пальца (был третий) — pinch продолжается,
+        // ничего не коммитим и не сбрасываем.
+        return;
+    }
+
     if (draggedNodeId !== null) {
         const node = props.nodes.find((n) => n.id === draggedNodeId);
 

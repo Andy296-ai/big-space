@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { THEME_TOKENS, translations } from '../types/settings';
 import type { AppSettings } from '../types/settings';
 import type { CameraState, EdgeData, NodeData } from './SpaceScene.vue';
@@ -23,6 +23,32 @@ const emit = defineEmits<{
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 
+// Размер в CSS-пикселях — фиксированный, в отличие от canvas.width/height
+// (реальный буфер), который теперь масштабируется под devicePixelRatio (см.
+// setupCanvasScale) так же, как основной канвас в SpaceScene.vue::fitCanvas().
+// Вся математика ниже — в CSS-пространстве, ctx.setTransform() сам
+// пересчитывает её в пиксели буфера.
+const MINIMAP_W = 160;
+const MINIMAP_H = 120;
+
+/** Буфер канваса — под фактическую плотность экрана, иначе на телефоне миникарта смазана. */
+function setupCanvasScale() {
+    const canvas = canvasRef.value;
+
+    if (!canvas) {
+        return;
+    }
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    canvas.width = Math.round(MINIMAP_W * dpr);
+    canvas.height = Math.round(MINIMAP_H * dpr);
+    canvas.style.width = `${MINIMAP_W}px`;
+    canvas.style.height = `${MINIMAP_H}px`;
+
+    canvas.getContext('2d')?.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
 function drawMinimap() {
     const canvas = canvasRef.value;
 
@@ -36,8 +62,8 @@ function drawMinimap() {
         return;
     }
 
-    const w = canvas.width;
-    const h = canvas.height;
+    const w = MINIMAP_W;
+    const h = MINIMAP_H;
 
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = tokens.value.canvasBg;
@@ -141,9 +167,9 @@ function onClickMinimap(event: MouseEvent) {
     minY -= margin;
     maxY += margin;
 
-    const targetX = minX + ((clickX - 8) / (canvas.width - 16)) * (maxX - minX);
+    const targetX = minX + ((clickX - 8) / (MINIMAP_W - 16)) * (maxX - minX);
     const targetY =
-        minY + (1 - (clickY - 8) / (canvas.height - 16)) * (maxY - minY);
+        minY + (1 - (clickY - 8) / (MINIMAP_H - 16)) * (maxY - minY);
 
     emit('focus-pos', { x: targetX, y: targetY });
 }
@@ -162,8 +188,20 @@ watch(
     { deep: true },
 );
 
-onMounted(() => {
+/** Смена ориентации/масштаба страницы может поменять devicePixelRatio — тот же повод, что и у fitCanvas() в SpaceScene.vue. */
+function handleResize() {
+    setupCanvasScale();
     drawMinimap();
+}
+
+onMounted(() => {
+    setupCanvasScale();
+    drawMinimap();
+    window.addEventListener('resize', handleResize);
+});
+
+onBeforeUnmount(() => {
+    window.removeEventListener('resize', handleResize);
 });
 </script>
 
@@ -173,8 +211,6 @@ onMounted(() => {
     >
         <canvas
             ref="canvasRef"
-            width="160"
-            height="120"
             class="block cursor-crosshair rounded-xl"
             @click="onClickMinimap"
         />
