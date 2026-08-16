@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { X, Edit3, Palette, Tag } from 'lucide-vue-next';
-import { ref, watch } from 'vue';
-import { useT } from '../lib/i18n';
+import { X, Edit3, Lock, Palette, Tag } from 'lucide-vue-next';
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { apiFetch } from '../lib/api';
+import { fill, useT } from '../lib/i18n';
 import AttachmentEditor from './AttachmentEditor.vue';
 import type { PendingAttachment } from './AttachmentEditor.vue';
 import MapFields from './MapFields.vue';
@@ -10,6 +11,7 @@ import ShapeFields from './ShapeFields.vue';
 import type { NodeData, NodeShape } from './SpaceScene.vue';
 
 const props = defineProps<{
+    spaceId: number;
     node: NodeData | null;
 }>();
 
@@ -50,6 +52,62 @@ const posY = ref('');
 const shape = ref<NodeShape>('circle');
 const logoFile = ref<File | null>(null);
 const pending = ref<PendingAttachment[]>([]);
+
+/**
+ * Жёсткая блокировка — захватывается при открытии, отпускается при любом
+ * закрытии (сохранение и отмена идут через один и тот же teardown, значит и
+ * releaseLock() срабатывает в обоих случаях одинаково). Save-time
+ * повторно проверяется на сервере (GraphController::update()) — эта
+ * проверка на открытии лишь UX-подсказка, а не единственная линия защиты.
+ */
+const lockState = ref<'acquiring' | 'acquired' | 'blocked'>('acquiring');
+const blockedByName = ref('');
+let lockHeld = false;
+
+async function acquireLock() {
+    if (!props.node) {
+        lockState.value = 'acquired';
+
+        return;
+    }
+
+    try {
+        const res = await apiFetch(
+            `/api/spaces/${props.spaceId}/nodes/${props.node.id}/lock`,
+            { method: 'POST' },
+        );
+
+        if (res.status === 409) {
+            const data = await res.json();
+            blockedByName.value = data.locked_by?.name ?? '?';
+            lockState.value = 'blocked';
+
+            return;
+        }
+
+        lockHeld = true;
+        lockState.value = 'acquired';
+    } catch (err) {
+        console.error('Failed to acquire the node lock:', err);
+        // Сеть недоступна — не запираем форму молча из-за этого одного
+        // запроса: save-time проверка на сервере всё равно подстрахует.
+        lockState.value = 'acquired';
+    }
+}
+
+function releaseLock() {
+    if (!lockHeld || !props.node) {
+        return;
+    }
+
+    lockHeld = false;
+    apiFetch(`/api/spaces/${props.spaceId}/nodes/${props.node.id}/lock`, {
+        method: 'DELETE',
+    }).catch(() => {});
+}
+
+onMounted(acquireLock);
+onBeforeUnmount(releaseLock);
 
 /** Пустое поле означает «точки нет», а не ноль. */
 function toCoord(value: string): number | null {
@@ -151,6 +209,24 @@ function handleSubmit() {
             </div>
 
             <div
+                v-if="lockState === 'blocked'"
+                class="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-6 py-10 text-center"
+            >
+                <div
+                    class="rounded-xl border border-amber-500/30 bg-amber-600/20 p-2.5 text-amber-400"
+                >
+                    <Lock class="h-5 w-5" />
+                </div>
+                <p class="text-xs font-semibold text-slate-200">
+                    {{ t.nodeLockBlockedTitle }}
+                </p>
+                <p class="max-w-64 text-[11px] text-slate-500">
+                    {{ fill(t.nodeLockBlockedBody, { name: blockedByName }) }}
+                </p>
+            </div>
+
+            <div
+                v-else
                 class="min-h-0 flex-1 space-y-3.5 overflow-y-auto px-6 pb-2 text-xs"
             >
                 <div>
@@ -257,8 +333,10 @@ function handleSubmit() {
                     {{ t.cancel }}
                 </button>
                 <button
+                    v-if="lockState !== 'blocked'"
+                    :disabled="lockState === 'acquiring'"
                     @click="handleSubmit"
-                    class="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-md hover:bg-blue-500"
+                    class="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-md hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     {{ t.saveChanges }}
                 </button>

@@ -26,6 +26,17 @@ class NodeAttachment extends Model
     /** Подмножество превью-форматов, которые можно ещё и редактировать прямо в приложении. */
     public const EDITABLE_FORMATS = ['md', 'txt'];
 
+    /**
+     * Форматы, для которых текст извлекается ОДИН РАЗ при загрузке (не на
+     * каждый поиск, в отличие от editable-форматов — те и дёшево читать
+     * целиком, и пользователь может их редактировать через updateContent(),
+     * так что закешированный текст сразу устарел бы).
+     */
+    public const EXTRACTABLE_FORMATS = ['pdf', 'docx'];
+
+    /** Файлы крупнее этого не читаем при поиске/эмбеддинге по содержимому — не для интерактивных операций. */
+    public const MAX_SEARCHABLE_BYTES = 5 * 1024 * 1024;
+
     protected $fillable = [
         'node_id',
         'kind',
@@ -35,6 +46,7 @@ class NodeAttachment extends Model
         'size',
         'format',
         'position',
+        'extracted_text',
     ];
 
     protected $casts = [
@@ -42,8 +54,13 @@ class NodeAttachment extends Model
         'size' => 'integer',
     ];
 
-    /** Путь в хранилище наружу не отдаём — клиенту он не нужен. */
-    protected $hidden = ['path'];
+    /**
+     * Путь в хранилище и извлечённый текст — внутренние детали, клиенту не
+     * нужны (второе вдобавок раздуло бы каждый ответ графа). embedding —
+     * см. Node::$hidden, тот же принцип: пишется только через
+     * EmbeddingService::store(), никогда не через $fillable.
+     */
+    protected $hidden = ['path', 'extracted_text', 'embedding'];
 
     /** Клиенту бейдж и признак «файл лежит у нас» нужны готовыми. */
     protected $appends = ['badge', 'stored', 'previewable', 'editable'];
@@ -74,6 +91,35 @@ class NodeAttachment extends Model
     public function getEditableAttribute(): bool
     {
         return $this->stored && in_array(strtolower($this->format), self::EDITABLE_FORMATS, true);
+    }
+
+    /**
+     * Текст для семантического поиска/эмбеддинга — единая точка, которой
+     * пользуются и AttachmentController::store()/updateContent() (сразу
+     * после изменения), и php artisan nodus:backfill-embeddings (для уже
+     * существующих вложений), чтобы решение "что тут вообще есть текстом"
+     * не разъезжалось между двумя местами. extracted_text — для PDF/DOCX
+     * (посчитан один раз при загрузке); для md/txt читаем с диска —
+     * дёшево, и содержимое могло измениться через updateContent(). Для
+     * остального (картинки, ссылки и т.д.) эмбеддить нечего.
+     */
+    public function searchableTextForEmbedding(): ?string
+    {
+        $format = strtolower((string) $this->format);
+
+        if (in_array($format, self::EXTRACTABLE_FORMATS, true)) {
+            return $this->extracted_text;
+        }
+
+        if (
+            in_array($format, self::EDITABLE_FORMATS, true)
+            && $this->stored
+            && $this->size <= self::MAX_SEARCHABLE_BYTES
+        ) {
+            return Storage::disk(self::DISK)->get($this->path);
+        }
+
+        return null;
     }
 
     /** Бейдж справа: берём из явного поля, иначе выводим из расширения в ссылке. */

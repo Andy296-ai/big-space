@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Message extends Model
@@ -19,13 +20,14 @@ class Message extends Model
 
     public const TYPES = [self::TYPE_TEXT, self::TYPE_VOICE, self::TYPE_VIDEO, self::TYPE_FILE];
 
-    protected $fillable = ['conversation_id', 'sender_id', 'type', 'body', 'edited_at', 'deleted_at'];
+    protected $fillable = ['conversation_id', 'sender_id', 'type', 'body', 'edited_at', 'deleted_at', 'pinned_at'];
 
     protected $casts = [
         'edited_at' => 'datetime',
         // Не Eloquent SoftDeletes — намеренно, см. миграцию. Обычный
         // datetime-каст, видимость по роли решает MessageController::serialize().
         'deleted_at' => 'datetime',
+        'pinned_at' => 'datetime',
     ];
 
     /** @return BelongsTo<Conversation, $this> */
@@ -44,6 +46,12 @@ class Message extends Model
     public function attachment(): HasOne
     {
         return $this->hasOne(MessageAttachment::class);
+    }
+
+    /** @return HasMany<MessageReaction, $this> */
+    public function reactions(): HasMany
+    {
+        return $this->hasMany(MessageReaction::class);
     }
 
     /**

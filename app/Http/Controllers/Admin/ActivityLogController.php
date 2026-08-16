@@ -17,8 +17,16 @@ class ActivityLogController extends Controller
 
         ActivityLog::record($request->user(), ActivityLog::ACTION_ACTIVITY_LOG_VIEWED);
 
+        // ->latest('id') как тай-брейк, не только created_at: в Postgres
+        // now()/CURRENT_TIMESTAMP — время начала ТРАНЗАКЦИИ, не момента
+        // самого INSERT, так что несколько записей лога, созданных подряд
+        // внутри одного запроса/транзакции, получают ОДИНАКОВЫЙ created_at
+        // побитово — без вторичной сортировки порядок "кто раньше" среди
+        // них не определён (SQLite так не делает, поэтому баг был не виден
+        // до перехода тестов на настоящий Postgres).
         $entries = ActivityLog::with('actor:id,name,email')
-            ->latest('created_at')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->limit(self::PER_PAGE)
             ->get();
 

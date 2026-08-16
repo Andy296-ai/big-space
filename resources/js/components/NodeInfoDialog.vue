@@ -3,6 +3,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
     ArrowRight,
+    Check,
     ChevronDown,
     ChevronUp,
     ChevronsDown,
@@ -16,21 +17,26 @@ import {
     KeyRound,
     Layers,
     Link,
+    Loader2,
+    Lock,
     MapPin,
     MessageSquare,
     MessagesSquare,
     Plus,
     Settings2,
+    Share2,
+    Sparkles,
     Tag,
     Trash2,
     X,
 } from 'lucide-vue-next';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { apiFetch } from '../lib/api';
-import { useT } from '../lib/i18n';
+import { fill, useT } from '../lib/i18n';
 import AttachmentViewer from './AttachmentViewer.vue';
 import NodeCommentsModal from './NodeCommentsModal.vue';
 import NodeHistoryModal from './NodeHistoryModal.vue';
+import ShareNodeModal from './ShareNodeModal.vue';
 import type { AttachmentData, NodeData } from './SpaceScene.vue';
 import SpaceStructureViewer from './SpaceStructureViewer.vue';
 import TreeSettingsModal from './TreeSettingsModal.vue';
@@ -42,7 +48,11 @@ const props = defineProps<{
     childNodes: NodeData[];
     canEdit: boolean;
     canModerateComments: boolean;
+    /** Владелец пространства или root — тот же охват, что и у shares-роутов (can:manage,space). */
+    canManage: boolean;
     currentUserId: number;
+    /** Живой сигнал node.lock.changed, см. Welcome.vue — null, если узел свободен или блокировку держит сам зритель. */
+    lockedBy: { id: number; name: string } | null;
 }>();
 
 const t = useT();
@@ -70,6 +80,18 @@ const showStructureViewer = ref(false);
 const showHistory = ref(false);
 const showComments = ref(false);
 const showTreeSettings = ref(false);
+const showShareBranch = ref(false);
+
+interface LinkSuggestion {
+    id: number;
+    title: string;
+    distance: number;
+}
+
+const suggestedLinksOpen = ref(false);
+const suggestedLinks = ref<LinkSuggestion[]>([]);
+const suggestedLinksLoading = ref(false);
+const suggestedLinksLoaded = ref(false);
 
 // При переходе на другой узел список снова сворачивается.
 watch(
@@ -80,6 +102,10 @@ watch(
         showHistory.value = false;
         showComments.value = false;
         showTreeSettings.value = false;
+        showShareBranch.value = false;
+        suggestedLinksOpen.value = false;
+        suggestedLinks.value = [];
+        suggestedLinksLoaded.value = false;
 
         // Сигнал «карточка узла открыта» — для журнала аудита. Fire-and-forget:
         // не блокирует открытие карточки, не показывает ошибку пользователю.
@@ -103,6 +129,116 @@ const visibleTags = computed(() =>
 );
 
 const attachments = computed(() => props.node?.attachments ?? []);
+
+/** Подгружается один раз при первом раскрытии секции, не при каждом открытии карточки узла. */
+async function loadSuggestedLinks() {
+    if (
+        !props.node ||
+        suggestedLinksLoaded.value ||
+        suggestedLinksLoading.value
+    ) {
+        return;
+    }
+
+    suggestedLinksLoading.value = true;
+
+    try {
+        const res = await apiFetch(
+            `/api/spaces/${props.spaceId}/nodes/${props.node.id}/suggested-links`,
+        );
+        suggestedLinks.value = await res.json();
+        suggestedLinksLoaded.value = true;
+    } catch (err) {
+        console.error('Failed to load suggested links:', err);
+    } finally {
+        suggestedLinksLoading.value = false;
+    }
+}
+
+function toggleSuggestedLinks() {
+    suggestedLinksOpen.value = !suggestedLinksOpen.value;
+
+    if (suggestedLinksOpen.value) {
+        loadSuggestedLinks();
+    }
+}
+
+/**
+ * Узнанная пара становится ребёнком текущего узла — фиксированное
+ * направление ради одного клика без отдельной модалки; при желании
+ * обратного направления связь всегда можно перевязать через обычный
+ * LinkNodeDialog. Реальную структурную проверку (single_parent/cycle/
+ * level_gap) всё равно делает сам GraphController::link() — сюда долетает
+ * уже готовое решение, а не догадка клиента.
+ */
+async function acceptSuggestion(suggestion: LinkSuggestion) {
+    if (!props.node) {
+        return;
+    }
+
+    try {
+        const res = await apiFetch(`/api/spaces/${props.spaceId}/links`, {
+            method: 'POST',
+            body: JSON.stringify({
+                parent_id: props.node.id,
+                child_id: suggestion.id,
+            }),
+        });
+
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            alert(describeLinkError(data));
+
+            return;
+        }
+
+        suggestedLinks.value = suggestedLinks.value.filter(
+            (s) => s.id !== suggestion.id,
+        );
+    } catch (err) {
+        console.error('Failed to accept a suggested link:', err);
+    }
+}
+
+async function dismissSuggestion(suggestion: LinkSuggestion) {
+    if (!props.node) {
+        return;
+    }
+
+    // Оптимистично — сама подсказка низкоставочная, а секунда задержки на
+    // отклик сети ради этого не стоит подвисающей кнопки.
+    suggestedLinks.value = suggestedLinks.value.filter(
+        (s) => s.id !== suggestion.id,
+    );
+
+    try {
+        await apiFetch(
+            `/api/spaces/${props.spaceId}/nodes/${props.node.id}/suggested-links/${suggestion.id}/dismiss`,
+            { method: 'POST' },
+        );
+    } catch (err) {
+        console.error('Failed to dismiss a suggested link:', err);
+    }
+}
+
+function describeLinkError(data: {
+    reason?: string;
+    error?: string;
+    message?: string;
+}): string {
+    switch (data.reason) {
+        case 'self_link':
+            return t.value.linkErrSelf;
+        case 'single_parent':
+            return t.value.linkErrSingleParent;
+        case 'cycle':
+            return t.value.linkErrCycle;
+        case 'level_gap':
+            return t.value.linkErrLevelGap;
+        default:
+            return data.error ?? data.message ?? 'Request failed.';
+    }
+}
 
 /** Загруженный файл отдаётся своим маршрутом за авторизацией, ссылка — как есть. */
 function hrefFor(item: AttachmentData): string {
@@ -379,6 +515,70 @@ onBeforeUnmount(() => destroyMap());
                 </div>
             </div>
 
+            <!-- Подсказки связей по смыслу — свёрнуто, грузится при первом раскрытии. Доступно только editor'ам, как и само связывание. -->
+            <div
+                v-if="canEdit"
+                class="rounded-xl border border-slate-700/40 bg-slate-800/50 p-2.5"
+            >
+                <button
+                    type="button"
+                    @click="toggleSuggestedLinks"
+                    class="flex w-full items-center gap-1.5 text-[10px] font-bold tracking-wider text-slate-400 uppercase"
+                >
+                    <Sparkles class="h-3 w-3 text-violet-400" />
+                    <span class="flex-1 text-start">{{
+                        t.suggestedLinksLabel
+                    }}</span>
+                    <ChevronDown v-if="!suggestedLinksOpen" class="h-3 w-3" />
+                    <ChevronUp v-else class="h-3 w-3" />
+                </button>
+
+                <div v-if="suggestedLinksOpen" class="mt-1.5">
+                    <div
+                        v-if="suggestedLinksLoading"
+                        class="flex items-center gap-1.5 py-1 text-[11px] text-slate-500"
+                    >
+                        <Loader2 class="h-3 w-3 animate-spin" />
+                        {{ t.sharedLoadingLabel }}
+                    </div>
+                    <p
+                        v-else-if="!suggestedLinks.length"
+                        class="py-1 text-[11px] text-slate-500"
+                    >
+                        {{ t.suggestedLinksEmpty }}
+                    </p>
+                    <div v-else class="flex flex-col gap-1">
+                        <div
+                            v-for="s in suggestedLinks"
+                            :key="s.id"
+                            class="flex items-center gap-1.5 rounded-full border border-violet-700/40 bg-violet-500/5 py-1 ps-2.5 pe-1 text-[11px] text-slate-200"
+                        >
+                            <span class="min-w-0 flex-1 truncate">{{
+                                s.title || t.untitledNode
+                            }}</span>
+                            <button
+                                type="button"
+                                @click="acceptSuggestion(s)"
+                                :aria-label="t.acceptSuggestionAction"
+                                :title="t.acceptSuggestionAction"
+                                class="shrink-0 rounded-full p-1 text-emerald-400 hover:bg-emerald-500/10"
+                            >
+                                <Check class="h-3 w-3" />
+                            </button>
+                            <button
+                                type="button"
+                                @click="dismissSuggestion(s)"
+                                :aria-label="t.dismissSuggestionAction"
+                                :title="t.dismissSuggestionAction"
+                                class="shrink-0 rounded-full p-1 text-slate-400 hover:bg-slate-700"
+                            >
+                                <X class="h-3 w-3" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Карта: только если у узла задана точка -->
             <div v-if="hasMap">
                 <div
@@ -543,6 +743,15 @@ onBeforeUnmount(() => destroyMap());
             </button>
         </div>
 
+        <!-- Живой бейдж «редактируется сейчас» — только когда держит НЕ сам зритель. -->
+        <div
+            v-if="canEdit && lockedBy && lockedBy.id !== currentUserId"
+            class="mx-5 mt-3 flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-600/10 px-3 py-2 text-[11px] font-semibold text-amber-300"
+        >
+            <Lock class="h-3.5 w-3.5 shrink-0" />
+            <span>{{ fill(t.nodeLockBadge, { name: lockedBy.name }) }}</span>
+        </div>
+
         <!-- Действия: только если есть право менять граф -->
         <div
             v-if="canEdit"
@@ -578,6 +787,15 @@ onBeforeUnmount(() => destroyMap());
             >
                 <Copy class="h-3.5 w-3.5 text-emerald-400" />
                 <span>{{ t.copyNode }}</span>
+            </button>
+
+            <button
+                v-if="canManage"
+                @click="showShareBranch = true"
+                class="col-span-2 flex items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-200 transition-all hover:bg-slate-700 active:scale-95"
+            >
+                <Share2 class="h-3.5 w-3.5 text-sky-400" />
+                <span>{{ t.shareBranchAction }}</span>
             </button>
 
             <button
@@ -639,5 +857,12 @@ onBeforeUnmount(() => destroyMap());
                 emit('tree-settings-updated', updated);
             }
         "
+    />
+
+    <ShareNodeModal
+        v-if="showShareBranch && node"
+        :space-id="spaceId"
+        :node="node"
+        @close="showShareBranch = false"
     />
 </template>

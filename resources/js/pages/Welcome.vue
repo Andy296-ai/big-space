@@ -46,6 +46,7 @@ const props = defineProps<{
     currentSpace: SpaceItem;
     spaces: SpaceItem[];
     focusNodeId: number | null;
+    initialConversationId: number | null;
 }>();
 
 const sceneRef = ref<InstanceType<typeof SpaceScene> | null>(null);
@@ -303,6 +304,14 @@ onMounted(async () => {
     if (props.focusNodeId !== null) {
         handleFocusNode(props.focusNodeId);
     }
+
+    // Клик по web push (?conversation=id, см. MessagePushNotification и
+    // public/sw.js) — открывает мессенджер сразу на нужном разговоре;
+    // доступность проверит сам can:access,conversation роут при загрузке.
+    if (props.initialConversationId !== null) {
+        messengerInitialConversationId.value = props.initialConversationId;
+        showMessenger.value = true;
+    }
 });
 
 // Живые обновления: другой человек/вкладка меняет граф этого пространства —
@@ -319,6 +328,26 @@ function scheduleLiveRefresh() {
 }
 
 const liveChannelName = `space.${props.currentSpace.id}`;
+
+/**
+ * Живой бейдж «кто сейчас редактирует» — отдельный лёгкий сигнал
+ * (node.lock.changed), НЕ через полный refetch графа (space.updated):
+ * лок/анлок происходит на каждое открытие/закрытие EditNodeModal, гонять
+ * из-за этого весь граф для всех в пространстве было бы шумно. См.
+ * NodeLockChanged на бэкенде.
+ */
+const nodeLocks = ref<Map<number, { id: number; name: string }>>(new Map());
+
+function handleNodeLockChanged(payload: {
+    node_id: number;
+    locked_by: { id: number; name: string } | null;
+}) {
+    if (payload.locked_by) {
+        nodeLocks.value.set(payload.node_id, payload.locked_by);
+    } else {
+        nodeLocks.value.delete(payload.node_id);
+    }
+}
 
 // Бейдж непрочитанных сообщений в HUD должен быть верным сразу, не только
 // после открытия самой панели мессенджера — она смонтирована лишь пока открыта.
@@ -356,7 +385,8 @@ onUnmounted(() => {
 onMounted(() => {
     getEcho()
         .private(liveChannelName)
-        .listen('.space.updated', scheduleLiveRefresh);
+        .listen('.space.updated', scheduleLiveRefresh)
+        .listen('.node.lock.changed', handleNodeLockChanged);
 });
 
 onUnmounted(() => {
@@ -575,7 +605,29 @@ async function uploadPending(nodeId: number, pending: PendingAttachment[]) {
         );
 
         if (!res.ok) {
-            alert(translations[appSettings.value.lang].uploadFailed);
+            // Раньше здесь всегда показывался один и тот же "не удалось
+            // загрузить файл" даже для ссылок и даже когда реальная причина
+            // была другой (429 от throttle:uploads, истёкшая сессия и т.п.) —
+            // ни то, ни другое нигде не логируется как исключение, так что
+            // без настоящего текста ошибки от сервера причину было не найти.
+            let data: { message?: string; errors?: Record<string, string[]> } =
+                {};
+
+            try {
+                data = await res.json();
+            } catch {
+                // тело не JSON (например, HTML-страница 419) — оставляем data пустым
+            }
+
+            const detail =
+                data.errors?.url?.[0] ??
+                data.errors?.file?.[0] ??
+                data.message ??
+                `HTTP ${res.status}`;
+
+            alert(
+                `${translations[appSettings.value.lang].uploadFailed} (${detail})`,
+            );
 
             return;
         }
@@ -587,13 +639,33 @@ async function uploadLogo(nodeId: number, file: File) {
     const form = new FormData();
     form.append('logo', file);
 
-    await apiFetch(
+    const res = await apiFetch(
         `/api/spaces/${props.currentSpace.id}/nodes/${nodeId}/logo`,
         {
             method: 'POST',
             body: form,
         },
     );
+
+    if (!res.ok) {
+        // Раньше результат ответа вообще не проверялся — отказ валидации
+        // (например 422 "must be an image") проходил незамеченным, и узел
+        // просто оставался без логотипа без единого объяснения почему.
+        let data: { message?: string; errors?: Record<string, string[]> } = {};
+
+        try {
+            data = await res.json();
+        } catch {
+            // тело не JSON (например, HTML-страница 419) — оставляем data пустым
+        }
+
+        const detail =
+            data.errors?.logo?.[0] ?? data.message ?? `HTTP ${res.status}`;
+
+        alert(
+            `${translations[appSettings.value.lang].uploadFailed} (${detail})`,
+        );
+    }
 }
 
 async function handleRemoveAttachment(attachmentId: number) {
@@ -641,6 +713,12 @@ function handleFocusNode(nodeId: number) {
 function handleFocusNodeFromMessenger(nodeId: number) {
     showMessenger.value = false;
     handleFocusNode(nodeId);
+}
+
+/** Клик по уведомлению об @упоминании в сообщении — открывает мессенджер сразу на нужном разговоре. */
+function openConversationFromNotification(conversationId: number) {
+    messengerInitialConversationId.value = conversationId;
+    showMessenger.value = true;
 }
 
 /** «Обсудить» у узла — находит/создаёт его разговор и открывает мессенджер сразу на нём. */
@@ -990,15 +1068,31 @@ async function handleEditNode(payload: {
     logoFile: File | null;
     pending: PendingAttachment[];
 }) {
-    showEditModal.value = false;
-
     const { pending, logoFile, ...fields } = payload;
 
+    // Модалка закрывается ТОЛЬКО после того, как сохранение реально
+    // завершилось (успехом или отказом) — закрытие размонтирует
+    // EditNodeModal и её onBeforeUnmount тут же отпустит лок (см. план
+    // "node edit-locking"). Закрыть её до await'а означало бы отпускать
+    // лок ДО отправки самого PUT — второй пользователь мог бы захватить
+    // лок и начать редактировать, пока наше сохранение ещё летело по сети,
+    // что и обесценивало бы саму идею "жёсткой" блокировки.
     try {
-        await apiFetch(
+        const res = await apiFetch(
             `/api/spaces/${props.currentSpace.id}/nodes/${payload.id}`,
             { method: 'PUT', body: JSON.stringify(fields) },
         );
+
+        if (!res.ok) {
+            // 409 — лок истёк, пока модалка была открыта: сервер отказался
+            // молча затереть чужую параллельную правку, дальше обновляем
+            // граф и просто не применяем эти изменения.
+            alert(describeServerError(await res.json()));
+            showEditModal.value = false;
+            await loadGraph();
+
+            return;
+        }
 
         if (pending.length) {
             await uploadPending(payload.id, pending);
@@ -1008,11 +1102,13 @@ async function handleEditNode(payload: {
             await uploadLogo(payload.id, logoFile);
         }
 
+        showEditModal.value = false;
         await loadGraph();
         selectedNode.value =
             nodes.value.find((n) => n.id === payload.id) ?? null;
     } catch (err) {
         console.error('Failed to update node:', err);
+        showEditModal.value = false;
     }
 }
 
@@ -1307,6 +1403,7 @@ async function handleDeleteSpace(spaceId: number) {
             @open-space-activity-log="showSpaceActivityLogModal = true"
             @open-global-search="showGlobalSearch = true"
             @open-messenger="showMessenger = true"
+            @open-conversation="openConversationFromNotification"
             @open-team-manager="showTeamManager = true"
             @open-add-root-modal="openAddRootModal"
             @focus-node="handleFocusNode"
@@ -1351,7 +1448,11 @@ async function handleDeleteSpace(spaceId: number) {
             :node="selectedNode"
             :can-edit="canEdit"
             :can-moderate-comments="isSpaceOwnerOrRoot"
+            :can-manage="isSpaceOwnerOrRoot"
             :current-user-id="currentUserId"
+            :locked-by="
+                selectedNode ? (nodeLocks.get(selectedNode.id) ?? null) : null
+            "
             :parent-nodes="selectedNodeParents"
             :child-nodes="selectedNodeChildren"
             @close="selectedNode = null"
@@ -1416,6 +1517,7 @@ async function handleDeleteSpace(spaceId: number) {
 
         <EditNodeModal
             v-if="showEditModal"
+            :space-id="currentSpace.id"
             :node="selectedNode"
             @close="showEditModal = false"
             @submit="handleEditNode"

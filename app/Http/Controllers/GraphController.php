@@ -13,6 +13,7 @@ use App\Models\NodeAttachment;
 use App\Models\NodeRevision;
 use App\Models\Space;
 use App\Models\User;
+use App\Services\EmbeddingService;
 use App\Services\GraphRepository;
 use App\Services\LayoutEngine;
 use App\Services\SpaceProvisioner;
@@ -31,13 +32,26 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class GraphController extends Controller
 {
     public function __construct(
-        protected GraphRepository $graphRepo
+        protected GraphRepository $graphRepo,
+        protected EmbeddingService $embeddings,
     ) {}
 
     /** Снимок для отмены удаления привязан к пространству, чтобы токен нельзя было применить к чужому. */
     private static function undoCacheKey(Space $space, string $token): string
     {
         return "undo:{$space->id}:{$token}";
+    }
+
+    /**
+     * Синхронно, на самом запросе — очередей в проекте нет (см.
+     * docs/PROJECT_OVERVIEW.md §3.4), а недоступный Ollama не должен
+     * блокировать сохранение узла: EmbeddingService сам глотает ошибку и
+     * возвращает null, store() в этом случае просто ничего не пишет.
+     */
+    private function embedNode(Node $node): void
+    {
+        $text = trim($node->title.' '.$node->description.' '.$node->tags);
+        $this->embeddings->store('nodes', $node->id, $this->embeddings->embed($text));
     }
 
     public function index(Request $request, SpaceProvisioner $provisioner): Response
@@ -78,10 +92,21 @@ class GraphController extends Controller
                 ->value('id');
         }
 
+        // Переход по клику на web push (см. MessagePushNotification::toWebPush()
+        // и public/sw.js) — открываем нужный разговор в мессенджере сразу.
+        // Доступность (участник ли пользователь) проверять здесь не нужно:
+        // MessengerPanel сам запросит его через уже защищённый
+        // can:access,conversation роут, а этого id тут просто нет, если он
+        // недоступен — see ConversationPolicy::access().
+        $initialConversationId = $request->filled('conversation')
+            ? (int) $request->query('conversation')
+            : null;
+
         return Inertia::render('Welcome', [
             'currentSpace' => $currentSpace,
             'spaces' => $owned->concat($shared)->values(),
             'focusNodeId' => $focusNodeId,
+            'initialConversationId' => $initialConversationId,
         ]);
     }
 
@@ -128,6 +153,7 @@ class GraphController extends Controller
             'depth' => 0,
         ]);
         $node->update(['tree_root_id' => $node->id]);
+        $this->embedNode($node);
 
         ActivityLog::record(
             $request->user(),
@@ -194,6 +220,10 @@ class GraphController extends Controller
 
             return $child;
         });
+
+        // Вне транзакции — как и ActivityLog::record() ниже: поход к Ollama
+        // не должен удерживать lockForUpdate() на родителе дольше необходимого.
+        $this->embedNode($child);
 
         ActivityLog::record(
             $request->user(),
@@ -281,6 +311,13 @@ class GraphController extends Controller
     {
         abort_unless($node->space_id === $space->id, 404);
 
+        // Повторная проверка лока НА СОХРАНЕНИИ, не только при открытии
+        // модалки — иначе сессия с истёкшим (но ещё активно редактируемым,
+        // например из-за долгой загрузки вложения) локом могла бы молча
+        // затереть чужую параллельную правку, что и обесценивало бы саму
+        // идею "жёсткой" блокировки.
+        abort_if($node->isLockedByOther($request->user()), 409, 'Your edit lock has expired. Reload and try again.');
+
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -311,6 +348,7 @@ class GraphController extends Controller
             'pos_x' => $validated['pos_x'] ?? $node->pos_x,
             'pos_y' => $validated['pos_y'] ?? $node->pos_y,
         ]);
+        $this->embedNode($node);
 
         ActivityLog::record(
             $request->user(),
@@ -338,9 +376,13 @@ class GraphController extends Controller
             $space->id,
         );
 
+        // orderByDesc('id') тай-брейком — см. тот же комментарий в
+        // Admin\ActivityLogController::index(): несколько снимков,
+        // созданных в одной транзакции, в Postgres получают одинаковый created_at.
         $revisions = $node->revisions()
             ->with('editor:id,name')
-            ->latest('created_at')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->get();
 
         return response()->json($revisions);
@@ -411,8 +453,10 @@ class GraphController extends Controller
     {
         abort_unless($node->space_id === $space->id, 404);
 
+        // allow_svg — правило image: по умолчанию его исключает (список
+        // без svg), а логотипы как раз часто хотят грузить именно SVG-иконкой.
         $request->validate([
-            'logo' => 'required|image|max:5120',
+            'logo' => 'required|image:allow_svg|max:5120',
         ]);
 
         $disk = Storage::disk(NodeAttachment::DISK);

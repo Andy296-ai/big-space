@@ -10,11 +10,16 @@ use App\Models\NodeAttachment;
 use App\Models\Space;
 use App\Services\GraphRepository;
 use App\Services\SpaceProvisioner;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use League\CommonMark\CommonMarkConverter;
+use League\CommonMark\Util\HtmlFilter;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 class SpaceController extends Controller
 {
@@ -178,6 +183,95 @@ class SpaceController extends Controller
         return response()->json($payload, 200, [
             'Content-Disposition' => 'attachment; filename="'.$space->slug.'.json"',
         ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    }
+
+    public function exportMarkdown(Request $request, Space $space, GraphRepository $graphRepo): Response
+    {
+        ActivityLog::record(
+            $request->user(),
+            ActivityLog::ACTION_SPACE_EXPORTED,
+            'space',
+            $space->id,
+            ['format' => 'markdown'],
+            $space->id,
+        );
+
+        $markdown = $this->buildExportMarkdown($space, $graphRepo);
+
+        return response($markdown, 200, [
+            'Content-Type' => 'text/markdown; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="'.$space->slug.'.md"',
+        ]);
+    }
+
+    /**
+     * Markdown → HTML (league/commonmark) → PDF (dompdf) через минимальный
+     * Blade-шаблон — без кастомных шрифтов/брендинга/нумерации страниц, та
+     * же нулевая инвестиция в оформление, что и у JSON-экспорта.
+     */
+    public function exportPdf(Request $request, Space $space, GraphRepository $graphRepo): SymfonyResponse
+    {
+        ActivityLog::record(
+            $request->user(),
+            ActivityLog::ACTION_SPACE_EXPORTED,
+            'space',
+            $space->id,
+            ['format' => 'pdf'],
+            $space->id,
+        );
+
+        $markdown = $this->buildExportMarkdown($space, $graphRepo);
+
+        // html_input по умолчанию — ALLOW: сырой HTML внутри заголовка/
+        // описания узла (это пользовательский текст, не доверенный контент)
+        // прошёл бы прямо в $html и дальше в шаблон через {!! !!} без
+        // экранирования — инъекция в экспортированный PDF. ESCAPE рендерит
+        // такой HTML как видимый текст, легитимный Markdown (**bold** и
+        // т.п.) при этом продолжает работать как обычно.
+        $converter = new CommonMarkConverter(['html_input' => HtmlFilter::ESCAPE]);
+        $html = $converter->convert($markdown)->getContent();
+
+        return Pdf::loadView('exports.space', ['html' => $html])->download($space->slug.'.pdf');
+    }
+
+    private function buildExportMarkdown(Space $space, GraphRepository $graphRepo): string
+    {
+        $lines = ['# '.$space->name];
+
+        if ($space->description) {
+            $lines[] = '';
+            $lines[] = $space->description;
+        }
+
+        foreach ($graphRepo->walkForExport($space->id) as ['node' => $node, 'depth' => $depth]) {
+            // Заголовки капаются на H6 — глубже вложенность у Markdown уже не имеет смысла.
+            $level = min($depth + 2, 6);
+
+            $lines[] = '';
+            $lines[] = str_repeat('#', $level).' '.($node->title ?: 'Untitled');
+
+            if ($node->description) {
+                $lines[] = '';
+                $lines[] = $node->description;
+            }
+
+            if ($node->tags) {
+                $lines[] = '';
+                $lines[] = '*Tags: '.$node->tags.'*';
+            }
+
+            if ($node->attachments->isNotEmpty()) {
+                $lines[] = '';
+
+                foreach ($node->attachments as $attachment) {
+                    $lines[] = $attachment->kind === NodeAttachment::KIND_LINK
+                        ? '- ['.($attachment->label ?: $attachment->url).']('.$attachment->url.')'
+                        : '- '.($attachment->label ?: 'file').' ('.$attachment->badge.')';
+                }
+            }
+        }
+
+        return implode("\n", $lines);
     }
 
     /**

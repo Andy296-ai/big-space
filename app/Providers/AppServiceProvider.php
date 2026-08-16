@@ -70,5 +70,9 @@ class AppServiceProvider extends ServiceProvider
         // Комментарии к узлам сегодня вообще без лимита — для чата это
         // не годится, у него принципиально больше объём сообщений в минуту.
         RateLimiter::for('messages', fn (Request $request) => Limit::perMinute(60)->by($request->user()?->id ?: $request->ip()));
+
+        // Публичные ссылки — аноним в принципе, только IP: тот же фолбэк,
+        // что и у остальных лимитеров, здесь используется всегда.
+        RateLimiter::for('shared', fn (Request $request) => Limit::perMinute(30)->by($request->ip()));
     }
 }

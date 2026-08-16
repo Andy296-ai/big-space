@@ -23,6 +23,20 @@ test('creates a space and seeds root origin node', function () {
     $this->assertDatabaseHas('nodes', ['title' => 'Origin', 'depth' => 0]);
 });
 
+test('the conversation query param becomes the initialConversationId inertia prop for a web push deep link', function () {
+    // См. MessagePushNotification::toWebPush()/public/sw.js — клик по
+    // пуш-уведомлению ведёт на /?conversation=id, а GraphController::index()
+    // должен прокинуть это в проп initialConversationId так же, как уже
+    // делает ?focus= для focusNodeId, иначе клик по пушу ничего не открывает.
+    $this->get('/?conversation=42')
+        ->assertInertia(fn ($page) => $page->where('initialConversationId', 42));
+});
+
+test('initialConversationId is null without a conversation query param', function () {
+    $this->get('/')
+        ->assertInertia(fn ($page) => $page->where('initialConversationId', null));
+});
+
 test('calculates golden angle placement for child nodes', function () {
     $space = Space::create(['name' => 'Test Space', 'slug' => 'test-space']);
     $parent = Node::create([

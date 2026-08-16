@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { router, usePage } from '@inertiajs/vue3';
 import {
+    ChevronDown,
+    ChevronUp,
     Copy,
     Download,
     Eye,
@@ -9,14 +11,21 @@ import {
     Loader2,
     Paperclip,
     Pencil,
+    Pin,
+    PinOff,
+    Search,
     Send,
+    SmilePlus,
     Trash2,
+    X,
 } from 'lucide-vue-next';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { apiFetch, getCsrfToken } from '../lib/api';
 import { getEcho } from '../lib/echo';
 import { useT } from '../lib/i18n';
 import type { RecordResult } from '../lib/useMediaRecorder';
+import { useMentionAutocomplete } from '../lib/useMentionAutocomplete';
+import type { MentionCandidate } from '../lib/useMentionAutocomplete';
 import MessageAttachmentPreview from './MessageAttachmentPreview.vue';
 import VideoRecorderButton from './VideoRecorderButton.vue';
 import VoiceRecorderButton from './VoiceRecorderButton.vue';
@@ -40,6 +49,18 @@ export interface NodeReferenceEntry {
     space_slug: string;
 }
 
+export interface ReactionEntry {
+    emoji: string;
+    count: number;
+    reacted_by_me: boolean;
+}
+
+/** @упоминание человека — считается заново на каждый ответ сервера, не персистится (см. ResolvesUserMentions). */
+export interface UserMentionEntry {
+    id: number;
+    name: string;
+}
+
 export interface MessageEntry {
     id: number;
     type: 'text' | 'voice' | 'video' | 'file';
@@ -47,19 +68,26 @@ export interface MessageEntry {
     created_at: string;
     edited_at: string | null;
     deleted_at: string | null;
+    pinned_at: string | null;
     sender: { id: number; name: string } | null;
     attachment: MessageAttachmentEntry | null;
     node_references: NodeReferenceEntry[];
+    reactions: ReactionEntry[];
+    user_mentions: UserMentionEntry[];
 }
+
+/** Тот же фиксированный набор, что и в MessageController::ALLOWED_REACTION_EMOJIS — не пикер, просто быстрый тап. */
+const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '🙏', '🎉'];
 
 type BodySegment =
     | { kind: 'text'; text: string }
-    | { kind: 'mention'; ref: NodeReferenceEntry };
+    | { kind: 'node-mention'; ref: NodeReferenceEntry }
+    | { kind: 'user-mention'; ref: UserMentionEntry };
 
 /** Изображения показываем миниатюрой в самом пузыре — остальное превью только по клику (Eye). */
 const IMAGE_FORMATS = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 
-const MENTION_PATTERN = /\[\[node:(\d+)\]\]/g;
+const MENTION_PATTERN = /\[\[(node|user):(\d+)\]\]/g;
 
 const props = defineProps<{
     conversationId: number;
@@ -79,6 +107,19 @@ const loading = ref(true);
 const loadingOlder = ref(false);
 const hasMoreOlder = ref(true);
 const messages = ref<MessageEntry[]>([]);
+
+/**
+ * "Прилипание" к низу — пока читатель следит за свежими сообщениями,
+ * message.posted (шлётся на пост/правку/удаление/пин/реакцию — на любую
+ * активность в разговоре) обновляет вид как раньше. Если он прокрутил
+ * вверх к истории, load() полностью заменил бы messages.value последним
+ * окном и принудительно скроллил вниз — то есть чужая реакция или пин
+ * где угодно в разговоре выдёргивала бы читателя обратно вниз и роняла
+ * бы уже подгруженную через loadOlder() старую историю. Вместо этого
+ * копим факт пропущенного обновления и подтягиваем его при возврате к низу.
+ */
+const stickToBottom = ref(true);
+let missedUpdateWhileScrolledUp = false;
 const newBody = ref('');
 const posting = ref(false);
 const listEl = ref<HTMLDivElement | null>(null);
@@ -88,6 +129,32 @@ const uploading = ref(false);
 const uploadProgress = ref<number | null>(null);
 const uploadError = ref('');
 const previewingMessage = ref<MessageEntry | null>(null);
+
+const mentionCandidates = ref<MentionCandidate[]>([]);
+const mention = useMentionAutocomplete(mentionCandidates);
+const composerEl = ref<HTMLTextAreaElement | null>(null);
+
+const pinnedMessages = ref<MessageEntry[]>([]);
+const pinnedBannerOpen = ref(false);
+const flashMessageId = ref<number | null>(null);
+const jumpingToMessage = ref(false);
+
+const reactionPickerId = ref<number | null>(null);
+
+const searchOpen = ref(false);
+const searchQuery = ref('');
+const searchResults = ref<MessageEntry[]>([]);
+const searching = ref(false);
+const searched = ref(false);
+const searchInputEl = ref<HTMLInputElement | null>(null);
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+interface ReadByEntry {
+    id: number;
+    name: string;
+}
+
+const lastReadBy = ref<ReadByEntry[]>([]);
 
 function baseUrl(): string {
     return `/api/messenger/conversations/${props.conversationId}`;
@@ -139,23 +206,71 @@ async function scrollToBottom() {
     listEl.value?.scrollTo({ top: listEl.value.scrollHeight });
 }
 
-async function markRead() {
+/**
+ * Читает read-by только для СВОЕГО последнего сообщения в текущем окне —
+ * не по каждому историческому, дорого не по деньгам, а по числу запросов
+ * на пустом месте. Без broadcast-обновления — освежается заодно с любым
+ * поводом перезагрузить/докрутить тред (см. вызовы после scrollToBottom()).
+ */
+async function refreshReadReceipt() {
+    const last = messages.value[messages.value.length - 1];
+
+    if (!last || !isMine(last) || isDeletedPlaceholder(last)) {
+        lastReadBy.value = [];
+
+        return;
+    }
+
     try {
-        await apiFetch(`${baseUrl()}/read`, { method: 'POST' });
+        const res = await apiFetch(`${baseUrl()}/messages/${last.id}/read-by`);
+        lastReadBy.value = await res.json();
     } catch (err) {
-        console.error('Failed to mark conversation as read:', err);
+        console.error('Failed to load read receipts:', err);
     }
 }
 
+function formatReadByNames(readers: ReadByEntry[]): string {
+    const names = readers.map((r) => r.name);
+
+    if (names.length <= 3) {
+        return names.join(', ');
+    }
+
+    return `${names.slice(0, 3).join(', ')} +${names.length - 3}`;
+}
+
+async function loadPinned() {
+    try {
+        const res = await apiFetch(`${baseUrl()}/messages/pinned`);
+        pinnedMessages.value = await res.json();
+    } catch (err) {
+        console.error('Failed to load pinned messages:', err);
+    }
+}
+
+/**
+ * Одним запросом: сообщения, закреплённые, участники (кандидаты на
+ * @упоминание) и "прочитано" под своим последним — плюс отметка "прочитано"
+ * самим фактом открытия, как отдельный /read раньше. Было 5 отдельных
+ * запросов (messages + markRead + pinned + participants + read-by),
+ * параллельных или нет — обычный браузер параллельность ещё терпит, а вот
+ * WebView в десктопном Tauri-клиенте ограничивает число одновременных
+ * соединений к одному хосту заметно жёстче, и лишние запросы там просто
+ * вставали в очередь друг за другом. Один запрос убирает зависимость от
+ * этого лимита клиента совсем — см. MessageController::bootstrap().
+ */
 async function load() {
     loading.value = true;
     hasMoreOlder.value = true;
 
     try {
-        const res = await apiFetch(`${baseUrl()}/messages`);
-        messages.value = await res.json();
+        const res = await apiFetch(`${baseUrl()}/bootstrap`);
+        const data = await res.json();
+        messages.value = data.messages ?? [];
+        pinnedMessages.value = data.pinned ?? [];
+        mentionCandidates.value = data.participants ?? [];
+        lastReadBy.value = data.read_by ?? [];
         await scrollToBottom();
-        await markRead();
     } catch (err) {
         console.error('Failed to load messages:', err);
     } finally {
@@ -199,9 +314,26 @@ async function loadOlder() {
 }
 
 function onScroll() {
-    if (listEl.value && listEl.value.scrollTop < 80) {
+    if (!listEl.value) {
+        return;
+    }
+
+    if (listEl.value.scrollTop < 80) {
         loadOlder();
     }
+
+    const distanceFromBottom =
+        listEl.value.scrollHeight -
+        listEl.value.scrollTop -
+        listEl.value.clientHeight;
+    const nowAtBottom = distanceFromBottom < 120;
+
+    if (nowAtBottom && !stickToBottom.value && missedUpdateWhileScrolledUp) {
+        missedUpdateWhileScrolledUp = false;
+        load();
+    }
+
+    stickToBottom.value = nowAtBottom;
 }
 
 async function post() {
@@ -221,6 +353,11 @@ async function post() {
         messages.value.push(await res.json());
         newBody.value = '';
         await scrollToBottom();
+        // Не await — это лишь "прочитано кем" под собственным последним
+        // сообщением, не критично для завершения отправки, а на
+        // однопоточном dev-сервере лишний последовательный запрос здесь
+        // только продлевает ощущение "зависания".
+        refreshReadReceipt();
     } catch (err) {
         console.error('Failed to post message:', err);
     } finally {
@@ -260,6 +397,11 @@ async function onFileChosen(event: Event) {
 
         messages.value.push(await res.json());
         await scrollToBottom();
+        // Не await — это лишь "прочитано кем" под собственным последним
+        // сообщением, не критично для завершения отправки, а на
+        // однопоточном dev-сервере лишний последовательный запрос здесь
+        // только продлевает ощущение "зависания".
+        refreshReadReceipt();
     } catch (err) {
         console.error('Failed to send the attachment:', err);
         uploadError.value = t.value.messengerUploadError;
@@ -346,6 +488,11 @@ async function onMediaRecorded(type: 'voice' | 'video', payload: RecordResult) {
 
         messages.value.push(await res.json());
         await scrollToBottom();
+        // Не await — это лишь "прочитано кем" под собственным последним
+        // сообщением, не критично для завершения отправки, а на
+        // однопоточном dev-сервере лишний последовательный запрос здесь
+        // только продлевает ощущение "зависания".
+        refreshReadReceipt();
     } catch (err) {
         console.error(`Failed to send the ${type} message:`, err);
         uploadError.value = t.value.messengerUploadError;
@@ -391,7 +538,24 @@ function canDeleteMessage(message: MessageEntry): boolean {
     return (isMine(message) || isRoot.value) && message.deleted_at === null;
 }
 
-/** Режет тело на текст и карточки упоминаний [[node:ID]] — ссылки уже отфильтрованы сервером по доступу читателя. */
+/** Закреплять может любой участник — маленький внутренний инструмент без роли модератора. */
+function canPinMessage(message: MessageEntry): boolean {
+    return message.deleted_at === null;
+}
+
+/**
+ * Реагировать/копировать текст удалённого сообщения бессмысленно — но
+ * isDeletedPlaceholder() тут не подходит: для root'а она false (сервер
+ * оставляет ему body/attachment тобстоуна, см.
+ * MessageController::serialize()), из-за чего вся панель действий
+ * рендерилась и позволяла root'у реагировать на/копировать уже удалённое
+ * сообщение. Проверяем deleted_at напрямую, как остальные canX.
+ */
+function canActOnMessage(message: MessageEntry): boolean {
+    return message.deleted_at === null;
+}
+
+/** Режет тело на текст и карточки упоминаний [[node:ID]]/[[user:ID]] — оба уже отфильтрованы сервером. */
 function splitBody(message: MessageEntry): BodySegment[] {
     if (!message.body) {
         return [];
@@ -410,12 +574,18 @@ function splitBody(message: MessageEntry): BodySegment[] {
             });
         }
 
-        const ref = message.node_references.find(
-            (r) => r.id === Number(match[1]),
-        );
-        segments.push(
-            ref ? { kind: 'mention', ref } : { kind: 'text', text: match[0] },
-        );
+        const id = Number(match[2]);
+        let segment: BodySegment | null = null;
+
+        if (match[1] === 'node') {
+            const ref = message.node_references.find((r) => r.id === id);
+            segment = ref ? { kind: 'node-mention', ref } : null;
+        } else {
+            const ref = message.user_mentions.find((r) => r.id === id);
+            segment = ref ? { kind: 'user-mention', ref } : null;
+        }
+
+        segments.push(segment ?? { kind: 'text', text: match[0] });
 
         lastIndex = index + match[0].length;
     }
@@ -526,10 +696,16 @@ async function deleteMessage(message: MessageEntry) {
             messages.value[index] = {
                 ...current,
                 deleted_at: new Date().toISOString(),
+                pinned_at: null,
                 body: isRoot.value ? current.body : null,
                 attachment: isRoot.value ? current.attachment : null,
             };
         }
+
+        // Сервер сам открепляет удалённое сообщение — синхронизируем баннер.
+        pinnedMessages.value = pinnedMessages.value.filter(
+            (m) => m.id !== message.id,
+        );
     } catch (err) {
         console.error('Failed to delete message:', err);
     } finally {
@@ -546,14 +722,226 @@ function handleDeleteClick(message: MessageEntry) {
     }
 }
 
+async function togglePin(message: MessageEntry) {
+    try {
+        const res = await apiFetch(`${baseUrl()}/messages/${message.id}/pin`, {
+            method: 'POST',
+        });
+
+        if (!res.ok) {
+            throw new Error('pin toggle failed');
+        }
+
+        const updated: MessageEntry = await res.json();
+        const index = messages.value.findIndex((m) => m.id === message.id);
+
+        if (index !== -1) {
+            messages.value[index] = updated;
+        }
+
+        await loadPinned();
+    } catch (err) {
+        console.error('Failed to toggle pin:', err);
+    } finally {
+        activeActionsId.value = null;
+    }
+}
+
+async function toggleReaction(message: MessageEntry, emoji: string) {
+    reactionPickerId.value = null;
+
+    try {
+        const res = await apiFetch(
+            `${baseUrl()}/messages/${message.id}/reactions`,
+            {
+                method: 'POST',
+                body: JSON.stringify({ emoji }),
+            },
+        );
+
+        if (!res.ok) {
+            throw new Error('reaction toggle failed');
+        }
+
+        const updated: MessageEntry = await res.json();
+        const index = messages.value.findIndex((m) => m.id === message.id);
+
+        if (index !== -1) {
+            messages.value[index] = updated;
+        }
+    } catch (err) {
+        console.error('Failed to toggle reaction:', err);
+    }
+}
+
+function toggleReactionPicker(message: MessageEntry) {
+    reactionPickerId.value =
+        reactionPickerId.value === message.id ? null : message.id;
+}
+
+/**
+ * Прыжок к сообщению из баннера закреплённых или из поиска: если оно уже
+ * в загруженном окне — просто скроллим; иначе одним запросом подгружаем
+ * окно вокруг него (?around_id=, см. MessageController::messagesAround)
+ * и заменяем текущее окно им — дальнейшая прокрутка вверх/вниз продолжает
+ * подгружать историю от новой точки как обычно.
+ */
+async function jumpToMessage(id: number) {
+    if (jumpingToMessage.value) {
+        return;
+    }
+
+    jumpingToMessage.value = true;
+    pinnedBannerOpen.value = false;
+    searchOpen.value = false;
+
+    try {
+        if (!messages.value.some((m) => m.id === id)) {
+            const res = await apiFetch(`${baseUrl()}/messages?around_id=${id}`);
+            messages.value = await res.json();
+            hasMoreOlder.value = true;
+            // Последнее сообщение в новом окне — почти наверняка не то же,
+            // для которого lastReadBy был запрошен изначально: без сброса
+            // плашка "прочитано X" привязалась бы к чужому историческому
+            // сообщению просто потому, что оно оказалось последним в этом
+            // окне (см. lastMessageId).
+            lastReadBy.value = [];
+        }
+
+        await nextTick();
+        const el = listEl.value?.querySelector<HTMLElement>(
+            `[data-message-id="${id}"]`,
+        );
+        el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        flashMessageId.value = id;
+        setTimeout(() => {
+            if (flashMessageId.value === id) {
+                flashMessageId.value = null;
+            }
+        }, 1600);
+    } catch (err) {
+        console.error('Failed to jump to message:', err);
+    } finally {
+        jumpingToMessage.value = false;
+    }
+}
+
+function onSearchInput() {
+    if (searchDebounceTimer) {
+        clearTimeout(searchDebounceTimer);
+    }
+
+    const trimmed = searchQuery.value.trim();
+
+    if (trimmed.length < 2) {
+        searchResults.value = [];
+        searched.value = false;
+
+        return;
+    }
+
+    searchDebounceTimer = setTimeout(async () => {
+        searching.value = true;
+
+        try {
+            const res = await apiFetch(
+                `${baseUrl()}/messages/search?q=${encodeURIComponent(trimmed)}`,
+            );
+            searchResults.value = await res.json();
+        } catch (err) {
+            console.error('Failed to search messages:', err);
+        } finally {
+            searching.value = false;
+            searched.value = true;
+        }
+    }, 250);
+}
+
+async function onComposerInput() {
+    if (!composerEl.value) {
+        return;
+    }
+
+    mention.handleInput(
+        newBody.value,
+        composerEl.value.selectionStart ?? newBody.value.length,
+    );
+}
+
+async function selectMention(candidate: MentionCandidate) {
+    if (!composerEl.value) {
+        return;
+    }
+
+    const result = mention.applyMention(newBody.value, candidate);
+    newBody.value = result.text;
+
+    await nextTick();
+    composerEl.value?.focus();
+    composerEl.value?.setSelectionRange(result.cursor, result.cursor);
+}
+
+function onComposerKeydown(event: KeyboardEvent) {
+    if (mention.query.value !== null && mention.matches.value.length) {
+        if (event.key === 'Enter' || event.key === 'Tab') {
+            event.preventDefault();
+            selectMention(mention.matches.value[0]);
+
+            return;
+        }
+
+        if (event.key === 'Escape') {
+            mention.close();
+
+            return;
+        }
+    }
+
+    const noModifiers =
+        !event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey;
+
+    if (event.key === 'Enter' && noModifiers) {
+        event.preventDefault();
+        post();
+    }
+}
+
+/** Небольшая задержка — иначе blur успевает закрыть список раньше, чем зарегистрируется клик по кандидату. */
+function onComposerBlur() {
+    setTimeout(() => mention.close(), 150);
+}
+
+async function toggleSearch() {
+    searchOpen.value = !searchOpen.value;
+
+    if (searchOpen.value) {
+        await nextTick();
+        searchInputEl.value?.focus();
+    } else {
+        searchQuery.value = '';
+        searchResults.value = [];
+        searched.value = false;
+    }
+}
+
 const canPost = computed(() => newBody.value.trim().length > 0);
+
+const lastMessageId = computed(
+    () => messages.value[messages.value.length - 1]?.id ?? null,
+);
 
 const currentUserId = computed(() => props.currentUserId);
 const channelName = computed(() => `App.Models.User.${currentUserId.value}`);
 
 function handleMessagePosted(payload: { conversation_id: number }) {
-    if (payload.conversation_id === props.conversationId) {
+    if (payload.conversation_id !== props.conversationId) {
+        return;
+    }
+
+    if (stickToBottom.value) {
         load();
+    } else {
+        missedUpdateWhileScrolledUp = true;
     }
 }
 
@@ -586,6 +974,119 @@ watch(
 <template>
     <div class="flex min-h-0 flex-1 flex-col">
         <div
+            class="flex shrink-0 items-center gap-2 border-b border-slate-800 px-3 py-2"
+        >
+            <div
+                v-if="searchOpen"
+                class="flex flex-1 items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/60 px-2.5 py-1.5"
+            >
+                <Search class="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                <input
+                    ref="searchInputEl"
+                    v-model="searchQuery"
+                    type="text"
+                    :placeholder="t.messengerSearchPlaceholder"
+                    @input="onSearchInput"
+                    class="w-full bg-transparent text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
+                />
+                <Loader2
+                    v-if="searching"
+                    class="h-3.5 w-3.5 shrink-0 animate-spin text-slate-500"
+                />
+            </div>
+            <div v-else class="flex-1" />
+            <button
+                type="button"
+                @click="toggleSearch"
+                :aria-label="t.messengerSearchAction"
+                :title="t.messengerSearchAction"
+                class="shrink-0 rounded-xl p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200"
+            >
+                <X v-if="searchOpen" class="h-4 w-4" />
+                <Search v-else class="h-4 w-4" />
+            </button>
+        </div>
+
+        <div
+            v-if="searchOpen && searched"
+            class="max-h-56 shrink-0 overflow-y-auto border-b border-slate-800 bg-slate-900/60"
+        >
+            <p
+                v-if="!searchResults.length"
+                class="px-4 py-3 text-center text-[11px] text-slate-500"
+            >
+                {{ t.messengerSearchNoResults }}
+            </p>
+            <button
+                v-for="result in searchResults"
+                :key="result.id"
+                type="button"
+                :disabled="jumpingToMessage"
+                @click="jumpToMessage(result.id)"
+                class="flex w-full flex-col rounded-lg px-4 py-1.5 text-start transition-colors hover:bg-slate-800/60 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+                <span class="text-[10px] font-bold text-sky-400">{{
+                    result.sender?.name ?? t.deletedAuthorLabel
+                }}</span>
+                <span class="truncate text-[11px] text-slate-300">{{
+                    result.body
+                }}</span>
+            </button>
+        </div>
+
+        <div
+            v-if="pinnedMessages.length"
+            class="shrink-0 border-b border-slate-800 bg-slate-900/60"
+        >
+            <button
+                type="button"
+                @click="pinnedBannerOpen = !pinnedBannerOpen"
+                class="flex w-full items-center gap-2 px-4 py-2 text-start transition-colors hover:bg-slate-800/40"
+            >
+                <Pin class="h-3.5 w-3.5 shrink-0 text-amber-400" />
+                <span
+                    class="min-w-0 flex-1 truncate text-[11px] font-semibold text-slate-300"
+                >
+                    {{ t.messengerPinnedSectionTitle }} ({{
+                        pinnedMessages.length
+                    }})
+                </span>
+                <ChevronUp
+                    v-if="pinnedBannerOpen"
+                    class="h-3.5 w-3.5 shrink-0 text-slate-500"
+                />
+                <ChevronDown
+                    v-else
+                    class="h-3.5 w-3.5 shrink-0 text-slate-500"
+                />
+            </button>
+            <div
+                v-if="pinnedBannerOpen"
+                class="max-h-40 space-y-0.5 overflow-y-auto px-2 pb-2"
+            >
+                <button
+                    v-for="pinned in pinnedMessages"
+                    :key="pinned.id"
+                    type="button"
+                    :disabled="jumpingToMessage"
+                    @click="jumpToMessage(pinned.id)"
+                    class="flex w-full flex-col rounded-lg px-2.5 py-1.5 text-start transition-colors hover:bg-slate-800/60 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                    <span class="text-[10px] font-bold text-sky-400">{{
+                        pinned.sender?.name ?? t.deletedAuthorLabel
+                    }}</span>
+                    <span class="truncate text-[11px] text-slate-300">
+                        {{
+                            pinned.type === 'text'
+                                ? (pinned.body ?? '')
+                                : t.messengerAttachmentPreviewLabel
+                        }}
+                    </span>
+                </button>
+            </div>
+        </div>
+
+        <div
             ref="listEl"
             class="min-h-0 flex-1 space-y-3 overflow-y-auto p-4"
             @scroll="onScroll"
@@ -612,9 +1113,13 @@ watch(
                 <div
                     v-for="message in messages"
                     :key="message.id"
+                    :data-message-id="message.id"
                     :class="[
-                        'group flex max-w-[78%] gap-2',
+                        'group flex max-w-[78%] gap-2 rounded-2xl transition-colors',
                         isMine(message) ? 'ms-auto flex-row-reverse' : '',
+                        flashMessageId === message.id
+                            ? 'bg-amber-500/10 ring-1 ring-amber-400/50'
+                            : '',
                     ]"
                 >
                     <div class="flex flex-col gap-0.5">
@@ -693,7 +1198,7 @@ watch(
                                     :key="i"
                                 >
                                     <button
-                                        v-if="segment.kind === 'mention'"
+                                        v-if="segment.kind === 'node-mention'"
                                         type="button"
                                         @click.stop="goToNode(segment.ref)"
                                         class="mx-0.5 inline-flex items-center gap-1 rounded-lg border border-white/20 bg-black/15 px-1.5 py-0.5 align-middle text-[11px] font-semibold hover:bg-black/25"
@@ -703,6 +1208,14 @@ watch(
                                             segment.ref.title || t.untitledNode
                                         }}</span>
                                     </button>
+                                    <span
+                                        v-else-if="
+                                            segment.kind === 'user-mention'
+                                        "
+                                        class="mx-0.5 rounded-lg bg-black/15 px-1.5 py-0.5 align-middle text-[11px] font-semibold"
+                                    >
+                                        @{{ segment.ref.name }}
+                                    </span>
                                     <template v-else>{{
                                         segment.text
                                     }}</template>
@@ -710,16 +1223,24 @@ watch(
                             </template>
 
                             <template v-else-if="isPlayableMedia(message)">
+                                <!-- preload="none" — иначе каждое голосовое/видео в
+                                     окне начинает буферизацию сразу при открытии
+                                     треда, а не по требованию: при нескольких
+                                     таких сообщениях разом это лишняя параллельная
+                                     нагрузка на клиента без всякой пользы, пока
+                                     ничего из них ещё не собираются проигрывать. -->
                                 <audio
                                     v-if="message.type === 'voice'"
                                     :src="previewUrlFor(message)"
                                     controls
+                                    preload="none"
                                     class="h-9 w-56 max-w-full"
                                 />
                                 <video
                                     v-else
                                     :src="previewUrlFor(message)"
                                     controls
+                                    preload="none"
                                     class="max-h-56 max-w-full rounded-lg"
                                 />
                             </template>
@@ -772,6 +1293,35 @@ watch(
                             </template>
                         </div>
 
+                        <!-- Пилюли реакций — под пузырём, кликабельны (повторный тап снимает свою реакцию). -->
+                        <div
+                            v-if="message.reactions.length"
+                            :class="[
+                                'flex flex-wrap items-center gap-1 px-1',
+                                isMine(message) ? 'justify-end' : '',
+                            ]"
+                        >
+                            <button
+                                v-for="reaction in message.reactions"
+                                :key="reaction.emoji"
+                                type="button"
+                                @click.stop="
+                                    toggleReaction(message, reaction.emoji)
+                                "
+                                :class="[
+                                    'flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10.5px] transition-colors',
+                                    reaction.reacted_by_me
+                                        ? 'border-blue-500/60 bg-blue-500/15 text-blue-300'
+                                        : 'border-slate-700 bg-slate-800/60 text-slate-400 hover:bg-slate-800',
+                                ]"
+                            >
+                                <span>{{ reaction.emoji }}</span>
+                                <span class="font-semibold">{{
+                                    reaction.count
+                                }}</span>
+                            </button>
+                        </div>
+
                         <div
                             :class="[
                                 'flex items-center gap-1.5 px-1',
@@ -780,7 +1330,13 @@ watch(
                                     : '',
                             ]"
                         >
-                            <span class="text-[9.5px] text-slate-500">
+                            <span
+                                class="flex items-center gap-1 text-[9.5px] text-slate-500"
+                            >
+                                <Pin
+                                    v-if="message.pinned_at"
+                                    class="h-2.5 w-2.5 shrink-0 text-amber-400"
+                                />
                                 {{ formatTime(message.created_at) }}
                                 <template v-if="message.edited_at">
                                     · {{ t.messengerEditedLabel }}</template
@@ -796,14 +1352,46 @@ watch(
                                     editingMessageId !== message.id
                                 "
                                 :class="[
-                                    'flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100',
+                                    'relative flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100',
                                     activeActionsId === message.id
                                         ? 'opacity-100'
                                         : '',
                                 ]"
                             >
                                 <button
-                                    v-if="message.body"
+                                    v-if="canActOnMessage(message)"
+                                    type="button"
+                                    @click.stop="toggleReactionPicker(message)"
+                                    :aria-label="t.messengerReactAction"
+                                    :title="t.messengerReactAction"
+                                    class="rounded p-0.5 text-slate-500 hover:text-slate-200"
+                                >
+                                    <SmilePlus class="h-3 w-3" />
+                                </button>
+                                <div
+                                    v-if="reactionPickerId === message.id"
+                                    @click.stop
+                                    :class="[
+                                        'absolute bottom-full z-10 mb-1 flex items-center gap-0.5 rounded-xl border border-slate-700 bg-slate-800 p-1 shadow-lg',
+                                        isMine(message) ? 'end-0' : 'start-0',
+                                    ]"
+                                >
+                                    <button
+                                        v-for="emoji in QUICK_REACTIONS"
+                                        :key="emoji"
+                                        type="button"
+                                        @click.stop="
+                                            toggleReaction(message, emoji)
+                                        "
+                                        class="rounded-lg p-1 text-sm transition-colors hover:bg-slate-700"
+                                    >
+                                        {{ emoji }}
+                                    </button>
+                                </div>
+                                <button
+                                    v-if="
+                                        message.body && canActOnMessage(message)
+                                    "
                                     type="button"
                                     @click.stop="copyMessageText(message)"
                                     :aria-label="t.messengerCopyAction"
@@ -811,6 +1399,33 @@ watch(
                                     class="rounded p-0.5 text-slate-500 hover:text-slate-200"
                                 >
                                     <Copy class="h-3 w-3" />
+                                </button>
+                                <button
+                                    v-if="canPinMessage(message)"
+                                    type="button"
+                                    @click.stop="togglePin(message)"
+                                    :aria-label="
+                                        message.pinned_at
+                                            ? t.messengerUnpinAction
+                                            : t.messengerPinAction
+                                    "
+                                    :title="
+                                        message.pinned_at
+                                            ? t.messengerUnpinAction
+                                            : t.messengerPinAction
+                                    "
+                                    :class="[
+                                        'rounded p-0.5',
+                                        message.pinned_at
+                                            ? 'text-amber-400 hover:text-amber-300'
+                                            : 'text-slate-500 hover:text-slate-200',
+                                    ]"
+                                >
+                                    <PinOff
+                                        v-if="message.pinned_at"
+                                        class="h-3 w-3"
+                                    />
+                                    <Pin v-else class="h-3 w-3" />
                                 </button>
                                 <button
                                     v-if="canEditMessage(message)"
@@ -847,6 +1462,19 @@ watch(
                                 </button>
                             </div>
                         </div>
+
+                        <!-- «Прочитано» — только под своим последним сообщением в окне, без live-обновления. -->
+                        <span
+                            v-if="
+                                message.id === lastMessageId &&
+                                isMine(message) &&
+                                lastReadBy.length > 0
+                            "
+                            class="px-1 text-end text-[9px] text-slate-500"
+                        >
+                            {{ t.messengerSeenByLabel }}
+                            {{ formatReadByNames(lastReadBy) }}
+                        </span>
                     </div>
                 </div>
             </template>
@@ -894,14 +1522,36 @@ watch(
                 @recorded="onMediaRecorded('video', $event)"
                 @error="onRecorderError"
             />
-            <textarea
-                v-model="newBody"
-                :placeholder="t.messengerComposerPlaceholder"
-                rows="1"
-                maxlength="2000"
-                @keydown.enter.exact.prevent="post"
-                class="min-h-0 flex-1 resize-none rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-blue-500 focus:outline-none"
-            />
+            <div class="relative min-h-0 flex-1">
+                <div
+                    v-if="
+                        mention.query.value !== null &&
+                        mention.matches.value.length
+                    "
+                    class="absolute bottom-full z-10 mb-1 w-full overflow-hidden rounded-xl border border-slate-700 bg-slate-800 shadow-lg"
+                >
+                    <button
+                        v-for="candidate in mention.matches.value"
+                        :key="candidate.id"
+                        type="button"
+                        @click="selectMention(candidate)"
+                        class="flex w-full items-center px-3 py-1.5 text-start text-xs text-slate-200 transition-colors hover:bg-slate-700"
+                    >
+                        @{{ candidate.name }}
+                    </button>
+                </div>
+                <textarea
+                    ref="composerEl"
+                    v-model="newBody"
+                    :placeholder="t.messengerComposerPlaceholder"
+                    rows="1"
+                    maxlength="2000"
+                    @input="onComposerInput"
+                    @keydown="onComposerKeydown"
+                    @blur="onComposerBlur"
+                    class="min-h-0 w-full resize-none rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                />
+            </div>
             <button
                 :disabled="!canPost || posting"
                 @click="post"

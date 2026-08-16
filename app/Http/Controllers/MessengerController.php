@@ -113,4 +113,12 @@ class MessengerController extends Controller
 
         return response()->json($teammates);
     }
+
+    /** Список участников разговора — источник кандидатов для @упоминания в композере. */
+    public function participants(Request $request, Conversation $conversation): JsonResponse
+    {
+        return response()->json(
+            $conversation->participants()->orderBy('users.name')->get(['users.id', 'users.name']),
+        );
+    }
 }

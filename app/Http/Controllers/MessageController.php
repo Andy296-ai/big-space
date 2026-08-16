@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Concerns\ResolvesUserMentions;
 use App\Events\MessagePosted;
+use App\Events\NotificationPosted;
 use App\Models\ActivityLog;
 use App\Models\Conversation;
 use App\Models\Message;
@@ -11,6 +13,8 @@ use App\Models\Node;
 use App\Models\Space;
 use App\Models\User;
 use App\Notifications\MessagePushNotification;
+use App\Notifications\UserMentioned;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -21,11 +25,19 @@ use Illuminate\Support\Str;
 
 class MessageController extends Controller
 {
+    use ResolvesUserMentions;
+
     /** [[node:123]] — упоминание узла в теле сообщения, парсится при сохранении/редактировании. */
     private const MENTION_PATTERN = '/\[\[node:(\d+)\]\]/';
 
     /** Общий eager-load для отдачи сообщения клиенту — везде одинаковый набор связей. */
-    private const RESPONSE_WITH = ['sender:id,name', 'attachment', 'referencedNodes:id,title,space_id', 'referencedNodes.space:id,slug'];
+    private const RESPONSE_WITH = ['sender:id,name', 'attachment', 'referencedNodes:id,title,space_id', 'referencedNodes.space:id,slug', 'reactions:id,message_id,user_id,emoji'];
+
+    /**
+     * Фиксированный набор — не пикер, просто v-for по константному массиву и
+     * на фронте, и здесь: любой другой текст в это поле не пройдёт валидацию.
+     */
+    private const ALLOWED_REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '🙏', '🎉'];
 
     private const DEFAULT_LIMIT = 50;
 
@@ -75,10 +87,24 @@ class MessageController extends Controller
 
     private const ALLOWED_VIDEO_MIMES = ['video/webm', 'video/mp4', 'video/ogg'];
 
-    /** Курсорная пагинация по id — see план: "before_id cursor", не offset (тот дрейфует под параллельными вставками). */
+    /**
+     * Курсорная пагинация по id — see план: "before_id cursor", не offset
+     * (тот дрейфует под параллельными вставками). ?around_id=X — отдельный
+     * режим «прыжка»: N/2 до и N/2 после конкретного сообщения разом, для
+     * перехода из закреплённых/поиска к историческому сообщению вне текущего
+     * загруженного окна — без него пришлось бы догружать before_id постранично.
+     */
     public function index(Request $request, Conversation $conversation): JsonResponse
     {
         $limit = min((int) $request->query('limit', self::DEFAULT_LIMIT), self::MAX_LIMIT);
+        $aroundId = $request->query('around_id');
+
+        if ($aroundId !== null) {
+            $messages = $this->messagesAround($conversation, (int) $aroundId, $limit);
+
+            return response()->json($this->serializeMany($messages, $conversation, $request->user()));
+        }
+
         $beforeId = $request->query('before_id');
 
         $messages = $conversation->messages()
@@ -90,7 +116,122 @@ class MessageController extends Controller
             ->reverse()
             ->values();
 
-        return response()->json($this->serializeMany($messages, $request->user()));
+        return response()->json($this->serializeMany($messages, $conversation, $request->user()));
+    }
+
+    /** @return Collection<int, Message> */
+    private function messagesAround(Conversation $conversation, int $targetId, int $limit): Collection
+    {
+        $half = intdiv($limit, 2);
+
+        $before = $conversation->messages()
+            ->with(self::RESPONSE_WITH)
+            ->where('id', '<=', $targetId)
+            ->latest('id')
+            ->limit($half + 1)
+            ->get()
+            ->reverse();
+
+        $after = $conversation->messages()
+            ->with(self::RESPONSE_WITH)
+            ->where('id', '>', $targetId)
+            ->oldest('id')
+            ->limit($half)
+            ->get();
+
+        return $before->concat($after)->values();
+    }
+
+    /**
+     * Поиск по телу внутри разговора — только текстовые и неудалённые
+     * сообщения (даже root не должен получать восстановленные плашки
+     * тобстоунов в выдаче поиска). Экранирование LIKE — тот же приём,
+     * что и в SearchController::index().
+     */
+    public function search(Request $request, Conversation $conversation): JsonResponse
+    {
+        $query = trim((string) $request->query('q', ''));
+
+        if (mb_strlen($query) < 2) {
+            return response()->json([]);
+        }
+
+        $needle = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], $query).'%';
+
+        $messages = $conversation->messages()
+            ->with(self::RESPONSE_WITH)
+            ->where('type', Message::TYPE_TEXT)
+            ->whereNull('deleted_at')
+            ->whereRaw('body LIKE ? ESCAPE ?', [$needle, '\\'])
+            ->latest('id')
+            ->limit(self::DEFAULT_LIMIT)
+            ->get();
+
+        return response()->json($this->serializeMany($messages, $conversation, $request->user()));
+    }
+
+    /** Закреплённые — отдельно от курсорной пагинации: старое закреплённое сообщение не обязано попадать в текущую подгруженную страницу. */
+    public function pinned(Request $request, Conversation $conversation): JsonResponse
+    {
+        $messages = $conversation->messages()
+            ->with(self::RESPONSE_WITH)
+            ->whereNotNull('pinned_at')
+            ->orderByDesc('pinned_at')
+            ->get();
+
+        return response()->json($this->serializeMany($messages, $conversation, $request->user()));
+    }
+
+    /**
+     * Всё для открытия треда одним запросом: сообщения, закреплённые,
+     * участники (кандидаты на @упоминание) и "прочитано" под своим последним
+     * сообщением — плюс отметка "прочитано" самим фактом открытия, как
+     * markRead(). Раньше это было 5 отдельных запросов подряд/параллельно
+     * (messages + markRead + pinned + participants + read-by); обычный
+     * браузер ещё терпит параллельность, но у WebView в десктопном
+     * Tauri-клиенте лимит одновременных соединений к одному хосту заметно
+     * скромнее — лишние запросы там просто вставали в очередь друг за
+     * другом. Один запрос снимает зависимость от лимита клиента совсем.
+     */
+    public function bootstrap(Request $request, Conversation $conversation): JsonResponse
+    {
+        $viewer = $request->user();
+        $limit = min((int) $request->query('limit', self::DEFAULT_LIMIT), self::MAX_LIMIT);
+
+        $messages = $conversation->messages()
+            ->with(self::RESPONSE_WITH)
+            ->latest('id')
+            ->limit($limit)
+            ->get()
+            ->reverse()
+            ->values();
+
+        $pinned = $conversation->messages()
+            ->with(self::RESPONSE_WITH)
+            ->whereNotNull('pinned_at')
+            ->orderByDesc('pinned_at')
+            ->get();
+
+        $participants = $conversation->participants()->orderBy('users.name')->get(['users.id', 'users.name']);
+
+        $lastMine = $messages->last(fn (Message $m) => $m->sender_id === $viewer->id);
+        $readBy = [];
+
+        if ($lastMine) {
+            $readBy = $conversation->participants()
+                ->where('users.id', '!=', $viewer->id)
+                ->wherePivot('last_read_at', '>=', $lastMine->created_at)
+                ->get(['users.id', 'users.name']);
+        }
+
+        $conversation->participants()->updateExistingPivot($viewer->id, ['last_read_at' => now()]);
+
+        return response()->json([
+            'messages' => $this->serializeMany($messages, $conversation, $viewer),
+            'pinned' => $this->serializeMany($pinned, $conversation, $viewer),
+            'participants' => $participants,
+            'read_by' => $readBy,
+        ]);
     }
 
     public function store(Request $request, Conversation $conversation): JsonResponse
@@ -106,9 +247,10 @@ class MessageController extends Controller
 
         $recipientIds = $this->broadcastConversationChanged($conversation, $request->user());
         $this->sendPushNotifications($recipientIds, $message);
+        $this->notifyMentionedUsers($message, $conversation, $request->user());
 
         return response()->json(
-            $this->serialize($message->load(self::RESPONSE_WITH), $request->user()),
+            $this->serialize($message->load(self::RESPONSE_WITH), $conversation, $request->user()),
             201,
         );
     }
@@ -140,7 +282,7 @@ class MessageController extends Controller
         $this->broadcastConversationChanged($conversation, $request->user());
 
         return response()->json(
-            $this->serialize($message->fresh(self::RESPONSE_WITH), $request->user()),
+            $this->serialize($message->fresh(self::RESPONSE_WITH), $conversation, $request->user()),
         );
     }
 
@@ -158,7 +300,8 @@ class MessageController extends Controller
         $user = $request->user();
         abort_unless($message->sender_id === $user->id || $user->is_root, 403);
 
-        $message->update(['deleted_at' => now()]);
+        // Закреплённое удалённое сообщение в баннере — бессмысленно, снимаем закрепление заодно.
+        $message->update(['deleted_at' => now(), 'pinned_at' => null]);
 
         ActivityLog::record($user, ActivityLog::ACTION_MESSAGE_DELETED, 'message', $message->id, [
             'conversation_id' => $conversation->id,
@@ -170,6 +313,92 @@ class MessageController extends Controller
         $this->broadcastConversationChanged($conversation, $user);
 
         return response()->json(['message' => 'ok']);
+    }
+
+    /**
+     * Закрепление — тумблер по существованию pinned_at, доступен любому
+     * участнику разговора, не только автору или root: небольшой внутренний
+     * инструмент, роли модератора здесь нет ни у чего в мессенджере.
+     */
+    public function pin(Request $request, Conversation $conversation, Message $message): JsonResponse
+    {
+        abort_unless($message->conversation_id === $conversation->id, 404);
+        abort_unless($message->deleted_at === null, 404);
+
+        $message->update(['pinned_at' => $message->pinned_at === null ? now() : null]);
+
+        $this->broadcastConversationChanged($conversation, $request->user());
+
+        return response()->json(
+            $this->serialize($message->fresh(self::RESPONSE_WITH), $conversation, $request->user()),
+        );
+    }
+
+    /**
+     * Реакция — тумблер по существованию строки (message_id, user_id, emoji):
+     * повторный тап тем же эмодзи снимает её же. Один пользователь может
+     * оставить несколько разных эмодзи на одно сообщение (уникальность —
+     * по тройке, не по паре message_id+user_id).
+     */
+    public function react(Request $request, Conversation $conversation, Message $message): JsonResponse
+    {
+        abort_unless($message->conversation_id === $conversation->id, 404);
+        abort_unless($message->deleted_at === null, 404);
+
+        $validated = $request->validate([
+            'emoji' => 'required|string|in:'.implode(',', self::ALLOWED_REACTION_EMOJIS),
+        ]);
+
+        $user = $request->user();
+        $existing = $message->reactions()
+            ->where('user_id', $user->id)
+            ->where('emoji', $validated['emoji'])
+            ->first();
+
+        if ($existing) {
+            $existing->delete();
+        } else {
+            try {
+                $message->reactions()->create(['user_id' => $user->id, 'emoji' => $validated['emoji']]);
+            } catch (QueryException $e) {
+                // Гонка: два быстрых тапа по одному эмодзи проходят проверку
+                // "уже есть?" оба разом, до того как первый create() успеет
+                // закоммититься — уникальный индекс (message_id, user_id,
+                // emoji) отклоняет второй. Результат совпадает с целью
+                // (реакция существует), так что это не ошибка — глушим
+                // только именно нарушение уникальности, не любой QueryException.
+                if (! str_starts_with((string) $e->getCode(), '23')) {
+                    throw $e;
+                }
+            }
+        }
+
+        $this->broadcastConversationChanged($conversation, $user);
+
+        return response()->json(
+            $this->serialize($message->fresh(self::RESPONSE_WITH), $conversation, $user),
+        );
+    }
+
+    /**
+     * «Прочитано кем» — по требованию, для конкретного сообщения (фронт
+     * зовёт это только для своего последнего отправленного в открытом
+     * треде, не по каждому историческому). Переиспользует существующую
+     * conversation_participants.last_read_at, отдельной таблицы не заводим.
+     * Без нового broadcast-события — markRead() дёргается куда чаще
+     * отправки сообщений (при каждом открытии/скролле), а галочка
+     * освежится с любым следующим поводом перезагрузить тред.
+     */
+    public function readBy(Request $request, Conversation $conversation, Message $message): JsonResponse
+    {
+        abort_unless($message->conversation_id === $conversation->id, 404);
+
+        $readers = $conversation->participants()
+            ->where('users.id', '!=', $message->sender_id)
+            ->wherePivot('last_read_at', '>=', $message->created_at)
+            ->get(['users.id', 'users.name']);
+
+        return response()->json($readers);
     }
 
     /** @return array<int, int> */
@@ -248,20 +477,60 @@ class MessageController extends Controller
     }
 
     /**
+     * @упоминания людей — только при первой отправке (store), не при
+     * правке: правка сообщения не должна будить того, кто уже видел его
+     * раньше. Круг, кого можно упомянуть — участники ИМЕННО этого разговора,
+     * не все пользователи разом.
+     */
+    private function notifyMentionedUsers(Message $message, Conversation $conversation, User $sender): void
+    {
+        if ($message->type !== Message::TYPE_TEXT || ! $message->body) {
+            return;
+        }
+
+        $participants = $conversation->participants()->get(['users.id', 'users.name']);
+        $mentioned = $this->resolveUserMentions($message->body, $participants->pluck('name', 'id'));
+
+        foreach ($mentioned as $entry) {
+            if ($entry['id'] === $sender->id) {
+                continue;
+            }
+
+            $user = $participants->firstWhere('id', $entry['id']);
+
+            if (! $user) {
+                continue;
+            }
+
+            $user->notify(new UserMentioned(
+                contextType: 'message',
+                contextId: $message->id,
+                excerpt: Str::limit($message->body, 100),
+                mentionedByName: $sender->name,
+                conversationId: $conversation->id,
+            ));
+            NotificationPosted::dispatch($user->id);
+        }
+    }
+
+    /**
      * Сериализует страницу сообщений разом — доступность пространств
      * упомянутых узлов считается ОДНИМ батч-запросом на всю страницу
      * (Space::accessibleAmong), а не по сообщению: иначе это был бы
      * настоящий N+1 при нескольких упоминаниях на нескольких сообщениях.
+     * Список участников для @упоминаний людей — тоже один запрос на всю
+     * страницу, не на сообщение.
      *
      * @param  Collection<int, Message>  $messages
      * @return array<int, array<string, mixed>>
      */
-    private function serializeMany(Collection $messages, User $viewer): array
+    private function serializeMany(Collection $messages, Conversation $conversation, User $viewer): array
     {
         $spaceIds = $messages->flatMap(fn (Message $m) => $m->referencedNodes->pluck('space_id'));
         $accessibleSpaceIds = Space::accessibleAmong($spaceIds, $viewer);
+        $participantNames = $conversation->participants()->pluck('users.name', 'users.id');
 
-        return $messages->map(fn (Message $m) => $this->serialize($m, $viewer, $accessibleSpaceIds))->all();
+        return $messages->map(fn (Message $m) => $this->serialize($m, $conversation, $viewer, $accessibleSpaceIds, $participantNames))->all();
     }
 
     /**
@@ -271,14 +540,16 @@ class MessageController extends Controller
      * в плане: голый toArray() отдал бы ВСЮ referencedNodes как есть).
      *
      * @param  array<int, int>|null  $accessibleSpaceIds  батч на всю страницу — см. serializeMany(); null для одиночного сообщения (store/update)
+     * @param  Collection<int, string>|null  $participantNames  id => name, батч на всю страницу; null для одиночного сообщения
      * @return array<string, mixed>
      */
-    private function serialize(Message $message, User $viewer, ?array $accessibleSpaceIds = null): array
+    private function serialize(Message $message, Conversation $conversation, User $viewer, ?array $accessibleSpaceIds = null, ?Collection $participantNames = null): array
     {
         $accessibleSpaceIds ??= Space::accessibleAmong($message->referencedNodes->pluck('space_id'), $viewer);
+        $participantNames ??= $conversation->participants()->pluck('users.name', 'users.id');
 
         $array = $message->toArray();
-        unset($array['referenced_nodes']);
+        unset($array['referenced_nodes'], $array['reactions']);
 
         $isHiddenTombstone = $message->deleted_at !== null && ! $viewer->is_root;
 
@@ -286,6 +557,8 @@ class MessageController extends Controller
             $array['body'] = null;
             $array['attachment'] = null;
             $array['node_references'] = [];
+            $array['reactions'] = [];
+            $array['user_mentions'] = [];
 
             return $array;
         }
@@ -299,6 +572,17 @@ class MessageController extends Controller
                 'space_slug' => $n->space->slug,
             ])
             ->values();
+
+        $array['reactions'] = $message->reactions
+            ->groupBy('emoji')
+            ->map(fn (Collection $group, string $emoji) => [
+                'emoji' => $emoji,
+                'count' => $group->count(),
+                'reacted_by_me' => $group->contains('user_id', $viewer->id),
+            ])
+            ->values();
+
+        $array['user_mentions'] = $this->resolveUserMentions($message->body, $participantNames);
 
         return $array;
     }

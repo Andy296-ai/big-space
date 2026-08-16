@@ -8,6 +8,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property string|null $embedding вектор pgvector сырой строкой ("[0.1,0.2,...]") — не в
+ *                                  $fillable/$casts (см. $hidden), Larastan не выводит её сам, только для
+ *                                  null-проверок в PHP; сравнение/поиск делается в SQL через EmbeddingService/LinkSuggestionService.
+ */
 class Node extends Model
 {
     /** Формы, которые умеет рисовать SpaceScene (см. resources/js/components/SpaceScene.vue). */
@@ -32,6 +37,7 @@ class Node extends Model
         'tree_root_id',
         'linked_user_id',
         'linked_space_id',
+        'logo_path',
     ];
 
     protected $casts = [
@@ -44,10 +50,24 @@ class Node extends Model
         'map_lon' => 'float',
         'linked_user_id' => 'integer',
         'linked_space_id' => 'integer',
+        'locked_at' => 'datetime',
     ];
 
-    /** Путь на диске — деталь реализации, наружу отдаём готовый URL. */
-    protected $hidden = ['logo_path'];
+    /**
+     * TTL страхует от забытой открытой вкладки/сессии без heartbeat —
+     * EditNodeModal встраивает AttachmentEditor, где загрузка вложения до
+     * 200 МБ может идти дольше короткого окна, отсюда не 5-10, а 15 минут.
+     */
+    public const LOCK_TTL_MINUTES = 15;
+
+    /**
+     * Путь на диске — деталь реализации, наружу отдаём готовый URL.
+     * embedding — вектор pgvector, пишется только через
+     * EmbeddingService::store() сырым SQL (не $node->update()) и намеренно
+     * НЕ в $fillable: незачем модели уметь массово присваивать его, а
+     * фронту он не нужен ни в каком виде.
+     */
+    protected $hidden = ['logo_path', 'embedding'];
 
     protected $appends = ['logo_url'];
 
@@ -75,13 +95,36 @@ class Node extends Model
         return $this->map_lat !== null && $this->map_lon !== null;
     }
 
+    /** @return BelongsTo<User, $this> */
+    public function lockedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'locked_by');
+    }
+
+    /** Заблокирован кем-то ДРУГИМ и блокировка ещё не истекла по TTL. */
+    public function isLockedByOther(User $user): bool
+    {
+        return $this->locked_by !== null
+            && $this->locked_by !== $user->id
+            && $this->locked_at !== null
+            && $this->locked_at->gt(now()->subMinutes(self::LOCK_TTL_MINUTES));
+    }
+
     public function getLogoUrlAttribute(): ?string
     {
         if ($this->logo_path === null) {
             return null;
         }
 
-        return "/api/spaces/{$this->space_id}/nodes/{$this->id}/logo";
+        // ?v=basename(logo_path) — сам путь у каждой загрузки свой (Laravel
+        // генерирует случайное имя файла в store()), так что смена логотипа
+        // меняет и URL. Без этого при замене логотипа URL оставался бы
+        // буквально тем же самым, и логотип не обновился бы ни в браузерном
+        // HTTP-кэше, ни в SpaceScene.vue's logoCache (Map, ключ — этот URL) —
+        // до перезагрузки страницы был бы виден старый файл.
+        $version = basename($this->logo_path);
+
+        return "/api/spaces/{$this->space_id}/nodes/{$this->id}/logo?v={$version}";
     }
 
     /** @return BelongsTo<Space, $this> */

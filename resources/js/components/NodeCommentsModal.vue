@@ -4,14 +4,27 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import { apiFetch } from '../lib/api';
 import { getEcho } from '../lib/echo';
 import { useT } from '../lib/i18n';
+import { useMentionAutocomplete } from '../lib/useMentionAutocomplete';
+import type { MentionCandidate } from '../lib/useMentionAutocomplete';
 import type { NodeData } from './SpaceScene.vue';
+
+interface UserMentionEntry {
+    id: number;
+    name: string;
+}
 
 interface CommentEntry {
     id: number;
     body: string;
     created_at: string;
     user: { id: number; name: string } | null;
+    user_mentions: UserMentionEntry[];
 }
+
+type BodySegment =
+    { kind: 'text'; text: string } | { kind: 'mention'; ref: UserMentionEntry };
+
+const MENTION_PATTERN = /\[\[user:(\d+)\]\]/g;
 
 const props = defineProps<{
     spaceId: number;
@@ -33,6 +46,10 @@ const posting = ref(false);
 const deletingId = ref<number | null>(null);
 const listEl = ref<HTMLDivElement | null>(null);
 
+const mentionCandidates = ref<MentionCandidate[]>([]);
+const mention = useMentionAutocomplete(mentionCandidates);
+const composerEl = ref<HTMLTextAreaElement | null>(null);
+
 async function load() {
     loading.value = true;
 
@@ -48,8 +65,106 @@ async function load() {
     }
 }
 
+/** Кандидаты на @упоминание — владелец, root'ы и те, кому расшарено пространство (см. Space::mentionableUsers()). */
+async function loadMentionCandidates() {
+    try {
+        const res = await apiFetch(
+            `/api/spaces/${props.spaceId}/mentionable-users`,
+        );
+        mentionCandidates.value = await res.json();
+    } catch (err) {
+        console.error('Failed to load mentionable users:', err);
+    }
+}
+
 function formatTime(iso: string): string {
     return new Date(iso).toLocaleString();
+}
+
+/** Режет тело на текст и @упоминания [[user:ID]] — уже отфильтрованы сервером (см. ResolvesUserMentions). */
+function splitBody(comment: CommentEntry): BodySegment[] {
+    const segments: BodySegment[] = [];
+    let lastIndex = 0;
+
+    for (const match of comment.body.matchAll(MENTION_PATTERN)) {
+        const index = match.index ?? 0;
+
+        if (index > lastIndex) {
+            segments.push({
+                kind: 'text',
+                text: comment.body.slice(lastIndex, index),
+            });
+        }
+
+        const ref = comment.user_mentions.find(
+            (r) => r.id === Number(match[1]),
+        );
+        segments.push(
+            ref ? { kind: 'mention', ref } : { kind: 'text', text: match[0] },
+        );
+
+        lastIndex = index + match[0].length;
+    }
+
+    if (lastIndex < comment.body.length) {
+        segments.push({ kind: 'text', text: comment.body.slice(lastIndex) });
+    }
+
+    return segments;
+}
+
+function onComposerInput() {
+    if (!composerEl.value) {
+        return;
+    }
+
+    mention.handleInput(
+        newBody.value,
+        composerEl.value.selectionStart ?? newBody.value.length,
+    );
+}
+
+async function selectMention(candidate: MentionCandidate) {
+    if (!composerEl.value) {
+        return;
+    }
+
+    const result = mention.applyMention(newBody.value, candidate);
+    newBody.value = result.text;
+
+    await nextTick();
+    composerEl.value?.focus();
+    composerEl.value?.setSelectionRange(result.cursor, result.cursor);
+}
+
+function onComposerKeydown(event: KeyboardEvent) {
+    if (mention.query.value !== null && mention.matches.value.length) {
+        if (event.key === 'Enter' || event.key === 'Tab') {
+            event.preventDefault();
+            selectMention(mention.matches.value[0]);
+
+            return;
+        }
+
+        if (event.key === 'Escape') {
+            mention.close();
+
+            return;
+        }
+    }
+
+    const noModifiers =
+        !event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey;
+
+    if (event.key === 'Enter' && noModifiers) {
+        event.preventDefault();
+        post();
+    }
+}
+
+/** Небольшая задержка — иначе blur успевает закрыть список раньше, чем зарегистрируется клик по кандидату. */
+function onComposerBlur() {
+    setTimeout(() => mention.close(), 150);
 }
 
 async function scrollToBottom() {
@@ -121,6 +236,7 @@ function handleCommentPosted(payload: { node_id: number }) {
 
 onMounted(() => {
     load();
+    loadMentionCandidates();
     getEcho()
         .private(liveChannelName)
         .listen('.comment.posted', handleCommentPosted);
@@ -224,21 +340,56 @@ const canPost = computed(() => newBody.value.trim().length > 0);
                             <p
                                 class="mt-1.5 text-xs leading-relaxed whitespace-pre-wrap text-slate-300"
                             >
-                                {{ comment.body }}
+                                <template
+                                    v-for="(segment, i) in splitBody(comment)"
+                                    :key="i"
+                                >
+                                    <span
+                                        v-if="segment.kind === 'mention'"
+                                        class="mx-0.5 rounded-lg bg-black/20 px-1.5 py-0.5 align-middle text-[11px] font-semibold"
+                                    >
+                                        @{{ segment.ref.name }}
+                                    </span>
+                                    <template v-else>{{
+                                        segment.text
+                                    }}</template>
+                                </template>
                             </p>
                         </div>
                     </div>
                 </div>
 
                 <div class="flex items-end gap-2 border-t border-slate-800 p-3">
-                    <textarea
-                        v-model="newBody"
-                        :placeholder="t.commentsPlaceholder"
-                        rows="2"
-                        maxlength="2000"
-                        @keydown.enter.exact.prevent="post"
-                        class="min-h-0 flex-1 resize-none rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-blue-500 focus:outline-none"
-                    />
+                    <div class="relative min-h-0 flex-1">
+                        <div
+                            v-if="
+                                mention.query.value !== null &&
+                                mention.matches.value.length
+                            "
+                            class="absolute bottom-full z-10 mb-1 w-full overflow-hidden rounded-xl border border-slate-700 bg-slate-800 shadow-lg"
+                        >
+                            <button
+                                v-for="candidate in mention.matches.value"
+                                :key="candidate.id"
+                                type="button"
+                                @click="selectMention(candidate)"
+                                class="flex w-full items-center px-3 py-1.5 text-start text-xs text-slate-200 transition-colors hover:bg-slate-700"
+                            >
+                                @{{ candidate.name }}
+                            </button>
+                        </div>
+                        <textarea
+                            ref="composerEl"
+                            v-model="newBody"
+                            :placeholder="t.commentsPlaceholder"
+                            rows="2"
+                            maxlength="2000"
+                            @input="onComposerInput"
+                            @keydown="onComposerKeydown"
+                            @blur="onComposerBlur"
+                            class="min-h-0 w-full resize-none rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                        />
+                    </div>
                     <button
                         :disabled="!canPost || posting"
                         @click="post"

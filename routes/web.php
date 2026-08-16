@@ -13,10 +13,14 @@ use App\Http\Controllers\MessageController;
 use App\Http\Controllers\MessengerController;
 use App\Http\Controllers\NodeCommentController;
 use App\Http\Controllers\NodeDiscussController;
+use App\Http\Controllers\NodeLinkSuggestionController;
+use App\Http\Controllers\NodeLockController;
 use App\Http\Controllers\NodeTreeSettingsController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\PublicShareController;
 use App\Http\Controllers\PushSubscriptionController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\ShareController;
 use App\Http\Controllers\SpaceActivityLogController;
 use App\Http\Controllers\SpaceCollaboratorController;
 use App\Http\Controllers\SpaceController;
@@ -41,6 +45,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/spaces', [SpaceController::class, 'store']);
         Route::post('/spaces/import', [SpaceController::class, 'import'])->middleware('throttle:import');
         Route::get('/search', [SearchController::class, 'index'])->middleware('throttle:search');
+        Route::get('/search/semantic', [SearchController::class, 'semantic'])->middleware('throttle:search');
 
         // Уведомления пользователя — доступ открыт в пространстве, кто-то
         // ответил на комментарий и т.п. Не привязаны к конкретному пространству.
@@ -59,10 +64,17 @@ Route::middleware('auth')->group(function () {
             Route::post('/direct/{target}', [DirectConversationController::class, 'store'])->middleware('throttle:messages');
 
             Route::middleware('can:access,conversation')->prefix('conversations/{conversation}')->group(function () {
+                Route::get('/participants', [MessengerController::class, 'participants']);
+                Route::get('/bootstrap', [MessageController::class, 'bootstrap']);
                 Route::get('/messages', [MessageController::class, 'index']);
+                Route::get('/messages/pinned', [MessageController::class, 'pinned']);
+                Route::get('/messages/search', [MessageController::class, 'search'])->middleware('throttle:search');
                 Route::post('/messages', [MessageController::class, 'store'])->middleware('throttle:messages');
                 Route::put('/messages/{message}', [MessageController::class, 'update'])->middleware('throttle:messages');
                 Route::delete('/messages/{message}', [MessageController::class, 'destroy'])->middleware('throttle:messages');
+                Route::post('/messages/{message}/pin', [MessageController::class, 'pin'])->middleware('throttle:messages');
+                Route::post('/messages/{message}/reactions', [MessageController::class, 'react'])->middleware('throttle:messages');
+                Route::get('/messages/{message}/read-by', [MessageController::class, 'readBy']);
                 Route::post('/read', [MessageController::class, 'markRead']);
                 Route::get('/messages/{message}/attachment/download', [MessageAttachmentController::class, 'download']);
                 Route::get('/messages/{message}/attachment/preview', [MessageAttachmentController::class, 'preview']);
@@ -92,6 +104,8 @@ Route::middleware('auth')->group(function () {
         Route::middleware('can:access,space')->prefix('spaces/{space}')->group(function () {
             // Только чтение — доступно viewer'ам наравне с editor'ами.
             Route::get('/export', [SpaceController::class, 'export'])->middleware('throttle:export');
+            Route::get('/export/markdown', [SpaceController::class, 'exportMarkdown'])->middleware('throttle:export');
+            Route::get('/export/pdf', [SpaceController::class, 'exportPdf'])->middleware('throttle:export');
             Route::get('/graph', [GraphController::class, 'fetchGraph']);
             Route::get('/nodes/{node}/logo', [GraphController::class, 'logo']);
             Route::get('/attachments/search', [AttachmentController::class, 'search'])->middleware('throttle:search');
@@ -106,6 +120,7 @@ Route::middleware('auth')->group(function () {
             Route::get('/nodes/{node}/comments', [NodeCommentController::class, 'index']);
             Route::post('/nodes/{node}/comments', [NodeCommentController::class, 'store']);
             Route::delete('/nodes/{node}/comments/{comment}', [NodeCommentController::class, 'destroy']);
+            Route::get('/mentionable-users', [NodeCommentController::class, 'mentionableUsers']);
 
             // «Обсудить» — открывает/создаёт разговор в мессенджере для этого узла.
             Route::post('/nodes/{node}/discuss', [NodeDiscussController::class, 'store'])->middleware('throttle:messages');
@@ -120,6 +135,8 @@ Route::middleware('auth')->group(function () {
                 Route::put('/nodes/bulk-move', [GraphController::class, 'bulkMove']);
                 Route::put('/nodes/{node}/move', [GraphController::class, 'move']);
                 Route::put('/nodes/{node}', [GraphController::class, 'update']);
+                Route::post('/nodes/{node}/lock', [NodeLockController::class, 'store']);
+                Route::delete('/nodes/{node}/lock', [NodeLockController::class, 'destroy']);
                 Route::put('/nodes/{node}/tree-settings', [NodeTreeSettingsController::class, 'update']);
                 Route::post('/nodes/{node}/logo', [GraphController::class, 'uploadLogo']);
 
@@ -129,6 +146,10 @@ Route::middleware('auth')->group(function () {
 
                 Route::post('/links', [GraphController::class, 'link']);
                 Route::delete('/links', [GraphController::class, 'unlink']);
+
+                // "Принять" — не отдельный роут, фронт зовёт /links выше напрямую.
+                Route::get('/nodes/{node}/suggested-links', [NodeLinkSuggestionController::class, 'index']);
+                Route::post('/nodes/{node}/suggested-links/{other}/dismiss', [NodeLinkSuggestionController::class, 'dismiss']);
 
                 Route::post('/nodes/delete-many', [GraphController::class, 'deleteNodes']);
                 Route::post('/nodes/restore', [GraphController::class, 'restoreNodes']);
@@ -145,7 +166,31 @@ Route::middleware('auth')->group(function () {
                 Route::post('/collaborators', [SpaceCollaboratorController::class, 'store']);
                 Route::put('/collaborators/{collaborator}', [SpaceCollaboratorController::class, 'update']);
                 Route::delete('/collaborators/{collaborator}', [SpaceCollaboratorController::class, 'destroy']);
+
+                // Публичные read-only ссылки — одна активная на всё пространство, одна на поддерево узла.
+                Route::get('/share', [ShareController::class, 'showForSpace']);
+                Route::post('/share', [ShareController::class, 'storeForSpace']);
+                Route::delete('/share', [ShareController::class, 'destroyForSpace']);
+                Route::get('/nodes/{node}/share', [ShareController::class, 'showForNode']);
+                Route::post('/nodes/{node}/share', [ShareController::class, 'storeForNode']);
+                Route::delete('/nodes/{node}/share', [ShareController::class, 'destroyForNode']);
             });
         });
+    });
+});
+
+/**
+ * Публичные read-only ссылки — сознательно ВНЕ и auth, и guest: аноним не
+ * должен ни логиниться, ни быть разлогинен, чтобы посмотреть. Комментарии
+ * и мессенджер сюда не отдаются в принципе — их нет ни в одном из этих
+ * методов (см. PublicShareController).
+ */
+Route::middleware('throttle:shared')->group(function () {
+    Route::get('/shared/{share:token}', [PublicShareController::class, 'show']);
+
+    Route::prefix('api/shared/{share:token}')->group(function () {
+        Route::get('/graph', [PublicShareController::class, 'graph']);
+        Route::get('/nodes/{node}/attachments/{attachment}/download', [PublicShareController::class, 'downloadAttachment']);
+        Route::get('/nodes/{node}/attachments/{attachment}/preview', [PublicShareController::class, 'previewAttachment']);
     });
 });

@@ -488,6 +488,103 @@ class GraphRepository
     }
 
     /**
+     * Настоящие потомки узла — BFS вдоль дочерних рёбер от rootId, включая
+     * сам rootId. Это ДРУГОЙ вопрос, чем computeDeletionSetForSpace()
+     * ("что станет недостижимым от остальных корней") — они расходятся,
+     * как только у узла есть второй родитель (dag/network/leveled, см.
+     * Space::allowsMultipleParents()), поэтому для "поддерево для шеринга"
+     * нужен именно этот метод, а не тот.
+     *
+     * @return array<int, int> id узлов поддерева (включая корень)
+     */
+    public function collectSubtreeIds(int $spaceId, int $rootId): array
+    {
+        $edges = Edge::where('space_id', $spaceId)->get(['parent_id', 'child_id']);
+
+        $childrenOf = [];
+        foreach ($edges as $e) {
+            $childrenOf[$e->parent_id][] = $e->child_id;
+        }
+
+        $visited = [$rootId => true];
+        $order = [$rootId];
+        $queue = [$rootId];
+
+        while (! empty($queue)) {
+            $current = array_shift($queue);
+
+            foreach ($childrenOf[$current] ?? [] as $childId) {
+                if (! isset($visited[$childId])) {
+                    $visited[$childId] = true;
+                    $order[] = $childId;
+                    $queue[] = $childId;
+                }
+            }
+        }
+
+        return $order;
+    }
+
+    /**
+     * Обход для экспорта в Markdown/PDF — pre-order DFS от каждого корня
+     * (узел без родителя), с глубиной для заголовков. НЕ переиспользует
+     * SpaceController::export()'s JSON-логику — та плоский список с
+     * ремаппингом id для обратного импорта, а не обход parent→children.
+     * Явный visited-guard обязателен, не опционален: network-пространства
+     * допускают циклы (см. Space::allowsCycles()), наивная рекурсия без
+     * него зависла бы навсегда.
+     *
+     * @return array<int, array{node: Node, depth: int}>
+     */
+    public function walkForExport(int $spaceId): array
+    {
+        $nodes = Node::where('space_id', $spaceId)->with('attachments')->get()->keyBy('id');
+        $edges = Edge::where('space_id', $spaceId)->orderBy('id')->get(['parent_id', 'child_id']);
+
+        $childrenOf = [];
+        $hasParent = [];
+
+        foreach ($edges as $e) {
+            $childrenOf[$e->parent_id][] = $e->child_id;
+            $hasParent[$e->child_id] = true;
+        }
+
+        $roots = $nodes->keys()->reject(fn (int $id) => $hasParent[$id] ?? false)->values();
+
+        // Цикл без единого "внешнего" корня в принципе возможен в network —
+        // тогда стартуем с первого узла по id, чтобы вообще что-то выгрузить,
+        // а не вернуть пустой документ.
+        if ($roots->isEmpty() && $nodes->isNotEmpty()) {
+            $roots = collect([$nodes->keys()->first()]);
+        }
+
+        $visited = [];
+        $ordered = [];
+
+        foreach ($roots as $rootId) {
+            $stack = [[$rootId, 0]];
+
+            while ($stack !== []) {
+                [$id, $depth] = array_pop($stack);
+
+                if (isset($visited[$id]) || ! $nodes->has($id)) {
+                    continue;
+                }
+
+                $visited[$id] = true;
+                $ordered[] = ['node' => $nodes->get($id), 'depth' => $depth];
+
+                // В обратном порядке — после array_pop() дети всплывают в исходной последовательности, не задом наперёд.
+                foreach (array_reverse($childrenOf[$id] ?? []) as $childId) {
+                    $stack[] = [$childId, $depth + 1];
+                }
+            }
+        }
+
+        return $ordered;
+    }
+
+    /**
      * Клонирует узел вместе со всем его поддеревом (и вложениями) как новые
      * записи, опционально подвешивая копию под другого родителя. Родитель
      * может быть любым узлом пространства — не обязательно корнем и не
@@ -587,6 +684,17 @@ class GraphRepository
 
             $rootTreeId = $newParent ? ($newParent->tree_root_id ?? $newParent->id) : $newRootId;
             Node::whereIn('id', array_values($idMap))->update(['tree_root_id' => $rootTreeId]);
+
+            // title/description/tags копируются как есть — значит и embedding
+            // источника ещё актуален для копии, звать Ollama заново незачем.
+            // Копируем прямо в БД (сервер сам читает vector-колонку и
+            // пишет её же клону) — не через PHP, у Eloquent нет типа для vector.
+            foreach ($idMap as $originalId => $cloneId) {
+                DB::statement(
+                    'UPDATE nodes SET embedding = (SELECT embedding FROM nodes WHERE id = ?) WHERE id = ?',
+                    [$originalId, $cloneId],
+                );
+            }
 
             foreach ($internalEdges as $edge) {
                 Edge::create([

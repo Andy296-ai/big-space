@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { Loader2, Share2, UserMinus, X } from 'lucide-vue-next';
+import { Globe, Loader2, Share2, UserMinus, X } from 'lucide-vue-next';
 import { onMounted, ref } from 'vue';
 import { apiFetch } from '../lib/api';
 import { useT } from '../lib/i18n';
+import PublicLinkManager from './PublicLinkManager.vue';
 import type { SpaceItem } from './SpaceChooserModal.vue';
 
 interface CollaboratorEntry {
@@ -196,6 +197,21 @@ onMounted(load);
             >
                 {{ error }}
             </p>
+
+            <!-- Публичная read-only ссылка на всё пространство -->
+            <div class="space-y-2 border-t border-slate-800 pt-3">
+                <div class="flex items-center gap-2">
+                    <Globe class="h-3.5 w-3.5 text-slate-400" />
+                    <span class="text-xs font-semibold text-slate-300">{{
+                        t.publicLinkLabel
+                    }}</span>
+                </div>
+                <p class="text-[11px] text-slate-500">
+                    {{ t.publicLinkDesc }}
+                </p>
+
+                <PublicLinkManager :api-url="`/api/spaces/${space.id}/share`" />
+            </div>
 
             <!-- Список участников -->
             <div

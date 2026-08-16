@@ -6,10 +6,19 @@ use App\Models\ActivityLog;
 use App\Models\Node;
 use App\Models\NodeAttachment;
 use App\Models\Space;
+use App\Services\EmbeddingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use PhpOffice\PhpWord\Element\AbstractContainer;
+use PhpOffice\PhpWord\Element\Table;
+use PhpOffice\PhpWord\Element\Text;
+use PhpOffice\PhpWord\Element\TextRun;
+use PhpOffice\PhpWord\IOFactory;
+use Smalot\PdfParser\Parser as PdfParser;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -26,14 +35,19 @@ class AttachmentController extends Controller
     /** Два миллиона символов на текстовый файл — с большим запасом для md/txt. */
     private const MAX_EDIT_CHARS = 2_000_000;
 
-    /** Файлы крупнее этого не читаем при поиске по содержимому — не для интерактивного поиска. */
-    private const MAX_SEARCHABLE_BYTES = 5 * 1024 * 1024;
-
     /** Короче этого запрос по содержимому не имеет смысла гонять по всем файлам. */
     private const MIN_SEARCH_QUERY_LENGTH = 2;
 
-    /** MIME для inline-показа: расширение важнее автоопределения диска, у которого md/txt часто уходят в octet-stream. */
-    private const PREVIEW_MIME_TYPES = [
+    public function __construct(
+        protected EmbeddingService $embeddings,
+    ) {}
+
+    /**
+     * MIME для inline-показа: расширение важнее автоопределения диска, у
+     * которого md/txt часто уходят в octet-stream. Public — переиспользуется
+     * в PublicShareController для превью вложений по публичной ссылке.
+     */
+    public const PREVIEW_MIME_TYPES = [
         'pdf' => 'application/pdf',
         'jpg' => 'image/jpeg',
         'jpeg' => 'image/jpeg',
@@ -87,6 +101,8 @@ class AttachmentController extends Controller
         }
 
         $file = $request->file('file');
+        $format = substr($file->getClientOriginalExtension(), 0, 8);
+        $extractedText = $this->extractSearchableText($file, strtolower($format));
 
         // Имя генерируем сами: из пользовательского имени берём только подпись,
         // иначе оно могло бы увести запись за пределы папки узла.
@@ -97,11 +113,90 @@ class AttachmentController extends Controller
             'label' => $label !== '' ? $label : $file->getClientOriginalName(),
             'path' => $path,
             'size' => $file->getSize(),
-            'format' => substr($file->getClientOriginalExtension(), 0, 8),
+            'format' => $format,
             'position' => $position,
+            'extracted_text' => $extractedText,
         ]);
 
+        // Читает с диска через NodeAttachment::searchableTextForEmbedding() —
+        // та же точка, которой пользуется и backfill-команда, чтобы решение
+        // "что тут вообще есть текстом" не расходилось между двумя местами.
+        $this->embedAttachment($attachment, $attachment->searchableTextForEmbedding());
+
         return response()->json($attachment, 201);
+    }
+
+    /** Синхронно на запросе — см. EmbeddingService класс-комментарий про отсутствие очередей в проекте. */
+    private function embedAttachment(NodeAttachment $attachment, ?string $text): void
+    {
+        if ($text === null || trim($text) === '') {
+            return;
+        }
+
+        $this->embeddings->store(
+            'node_attachments',
+            $attachment->id,
+            $this->embeddings->embed($attachment->label.' '.$text),
+        );
+    }
+
+    /**
+     * Извлекает текст для поиска по содержимому — ОДИН РАЗ при загрузке, не
+     * на каждый запрос поиска (в отличие от editable-форматов md/txt: те и
+     * дёшево читать целиком, и пользователь может их менять через
+     * updateContent(), так что закешированный текст сразу устарел бы).
+     * try/catch — битый PDF/DOCX не должен ронять саму загрузку файла,
+     * просто останется без текстового индекса.
+     */
+    private function extractSearchableText(UploadedFile $file, string $format): ?string
+    {
+        if (! in_array($format, NodeAttachment::EXTRACTABLE_FORMATS, true) || $file->getSize() > NodeAttachment::MAX_SEARCHABLE_BYTES) {
+            return null;
+        }
+
+        try {
+            return match ($format) {
+                'pdf' => (new PdfParser)->parseFile($file->getRealPath())->getText(),
+                'docx' => $this->extractDocxText($file->getRealPath()),
+            };
+        } catch (\Throwable $e) {
+            Log::warning('Failed to extract searchable text from an uploaded attachment.', [
+                'format' => $format,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    private function extractDocxText(string $absolutePath): string
+    {
+        $phpWord = IOFactory::load($absolutePath);
+        $parts = [];
+
+        foreach ($phpWord->getSections() as $section) {
+            $this->collectDocxText($section, $parts);
+        }
+
+        return implode(' ', $parts);
+    }
+
+    /** @param  array<int, string>  $parts */
+    private function collectDocxText(AbstractContainer $container, array &$parts): void
+    {
+        foreach ($container->getElements() as $element) {
+            if ($element instanceof Text) {
+                $parts[] = (string) $element->getText();
+            } elseif ($element instanceof TextRun) {
+                $this->collectDocxText($element, $parts);
+            } elseif ($element instanceof Table) {
+                foreach ($element->getRows() as $row) {
+                    foreach ($row->getCells() as $cell) {
+                        $this->collectDocxText($cell, $parts);
+                    }
+                }
+            }
+        }
     }
 
     /** Отдаёт загруженный файл. Внешние ссылки скачивать нечего — они и так адрес. */
@@ -199,13 +294,19 @@ class AttachmentController extends Controller
         $disk->put($attachment->path, $validated['content']);
 
         $attachment->update(['size' => $disk->size($attachment->path)]);
+        $this->embedAttachment($attachment, $validated['content']);
 
         return response()->json($attachment->fresh());
     }
 
     /**
-     * ID узлов, у которых текстовое вложение (md/txt) содержит запрос.
-     * Название узла/тегов ищется на фронте — это добирает то, чего там не видно.
+     * ID узлов, у которых вложение содержит запрос. Editable-форматы
+     * (md/txt) читаются вживую на каждый запрос — дёшево, и пользователь
+     * мог их поменять через updateContent(), кеш был бы неактуален.
+     * PDF/DOCX (EXTRACTABLE_FORMATS) — наоборот, сверяются с уже
+     * извлечённым при загрузке текстом (extracted_text), не парсятся заново
+     * на каждый поиск. Название узла/тегов ищется на фронте — это добирает
+     * то, чего там не видно.
      */
     public function search(Request $request, Space $space): JsonResponse
     {
@@ -221,9 +322,14 @@ class AttachmentController extends Controller
         $nodeIds = NodeAttachment::query()
             ->whereHas('node', fn ($q) => $q->where('space_id', $space->id))
             ->whereNotNull('path')
-            ->get(['node_id', 'path', 'format', 'size'])
+            ->get(['node_id', 'path', 'format', 'size', 'extracted_text'])
             ->filter(function (NodeAttachment $attachment) use ($disk, $needle) {
-                if (! $attachment->editable || $attachment->size > self::MAX_SEARCHABLE_BYTES) {
+                if (in_array(strtolower($attachment->format), NodeAttachment::EXTRACTABLE_FORMATS, true)) {
+                    return $attachment->extracted_text !== null
+                        && str_contains(Str::lower($attachment->extracted_text), $needle);
+                }
+
+                if (! $attachment->editable || $attachment->size > NodeAttachment::MAX_SEARCHABLE_BYTES) {
                     return false;
                 }
 

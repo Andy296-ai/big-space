@@ -242,6 +242,8 @@ export type TranslationKeys = {
     notificationsEmpty: string;
     notificationsMarkAllRead: string;
     notificationAccessGranted: string;
+    notificationMentionedInMessage: string;
+    notificationMentionedInComment: string;
     resetPasswordTitle: string;
     newPasswordLabel: string;
     confirmPasswordLabel: string;
@@ -306,10 +308,21 @@ export type TranslationKeys = {
     tagsPlaceholder: string;
     addNode: string;
     editNodeTitle: string;
+    nodeLockBlockedTitle: string;
+    nodeLockBlockedBody: string;
+    nodeLockBadge: string;
+    sharedReadOnlyBadge: string;
+    sharedSubtreeBadge: string;
+    sharedLoadingLabel: string;
+    sharedSelectNodeHint: string;
     saveChanges: string;
     coordinatesLabel: string;
     parentsLabel: string;
     childrenLabel: string;
+    suggestedLinksLabel: string;
+    suggestedLinksEmpty: string;
+    acceptSuggestionAction: string;
+    dismissSuggestionAction: string;
     openInMaps: string;
     mapSectionLabel: string;
     latLabel: string;
@@ -326,6 +339,7 @@ export type TranslationKeys = {
     globalSearchEmpty: string;
     globalSearchHint: string;
     globalSearchAction: string;
+    globalSearchFoundByMeaning: string;
     nodeHistoryTitle: string;
     nodeHistoryDesc: string;
     nodeHistoryEmpty: string;
@@ -403,6 +417,13 @@ export type TranslationKeys = {
     shareRoleLabel: string;
     shareAction: string;
     shareEmptyLabel: string;
+    publicLinkLabel: string;
+    publicLinkDesc: string;
+    generateLinkAction: string;
+    copyLinkAction: string;
+    regenerateLinkAction: string;
+    revokeLinkAction: string;
+    shareBranchAction: string;
     revokeAccessAction: string;
     ownerLabel: string;
     spacesSubtitle: string;
@@ -413,6 +434,9 @@ export type TranslationKeys = {
     spaceDescPlaceholder: string;
     newSpace: string;
     exportSpace: string;
+    exportFormatJson: string;
+    exportFormatMarkdown: string;
+    exportFormatPdf: string;
     importSpace: string;
     importBadFormat: string;
     createSpace: string;
@@ -534,6 +558,14 @@ export type TranslationKeys = {
     messengerCopyAction: string;
     messengerNodeSection: string;
     messengerDiscussAction: string;
+    messengerPinAction: string;
+    messengerUnpinAction: string;
+    messengerPinnedSectionTitle: string;
+    messengerReactAction: string;
+    messengerSearchAction: string;
+    messengerSearchPlaceholder: string;
+    messengerSearchNoResults: string;
+    messengerSeenByLabel: string;
     pushNotificationsLabel: string;
     pushNotificationsToggleLabel: string;
     pushNotificationsUnsupported: string;
@@ -586,6 +618,9 @@ export const translations: Record<Language, TranslationKeys> = {
         notificationsMarkAllRead: 'Mark all as read',
         notificationAccessGranted:
             '{owner} gave you {role} access to "{space}"',
+        notificationMentionedInMessage: '{name} mentioned you: "{excerpt}"',
+        notificationMentionedInComment:
+            '{name} mentioned you in a comment: "{excerpt}"',
         resetPasswordTitle: 'Reset password',
         newPasswordLabel: 'New password (min. 9 characters)',
         confirmPasswordLabel: 'Confirm password',
@@ -659,10 +694,22 @@ export const translations: Record<Language, TranslationKeys> = {
         tagsPlaceholder: 'e.g. core, feature',
         addNode: 'Add Node',
         editNodeTitle: 'Edit Node',
+        nodeLockBlockedTitle: 'Being edited by someone else',
+        nodeLockBlockedBody:
+            '{name} is currently editing this node. Try again shortly.',
+        nodeLockBadge: 'Currently being edited by {name}',
+        sharedReadOnlyBadge: 'Public read-only view',
+        sharedSubtreeBadge: 'Shared branch',
+        sharedLoadingLabel: 'Loading...',
+        sharedSelectNodeHint: 'Select a node to see its details',
         saveChanges: 'Save Changes',
         coordinatesLabel: 'Coordinates',
         parentsLabel: 'Parents',
         childrenLabel: 'Children',
+        suggestedLinksLabel: 'Suggested links',
+        suggestedLinksEmpty: 'No suggestions right now.',
+        acceptSuggestionAction: 'Link this node',
+        dismissSuggestionAction: 'Dismiss',
         openInMaps: 'Open in Maps',
         mapSectionLabel: 'Map point',
         latLabel: 'Latitude',
@@ -680,6 +727,7 @@ export const translations: Record<Language, TranslationKeys> = {
         globalSearchEmpty: 'No matches.',
         globalSearchHint: 'Type at least 2 characters to search everywhere.',
         globalSearchAction: 'Search everywhere',
+        globalSearchFoundByMeaning: 'Found by meaning',
         nodeHistoryTitle: 'Edit history',
         nodeHistoryDesc: 'Snapshots taken before each change',
         nodeHistoryEmpty: 'No edits yet.',
@@ -759,6 +807,14 @@ export const translations: Record<Language, TranslationKeys> = {
         shareRoleLabel: 'Role',
         shareAction: 'Share',
         shareEmptyLabel: 'No one else has access yet.',
+        publicLinkLabel: 'Public link',
+        publicLinkDesc:
+            'Anyone with this link can view this space read-only, without signing in.',
+        generateLinkAction: 'Generate public link',
+        copyLinkAction: 'Copy link',
+        regenerateLinkAction: 'Regenerate link',
+        revokeLinkAction: 'Revoke link',
+        shareBranchAction: 'Share this branch',
         revokeAccessAction: 'Revoke access',
         ownerLabel: 'Owner',
         spacesSubtitle: 'Manage and switch between your graph spaces',
@@ -768,7 +824,10 @@ export const translations: Record<Language, TranslationKeys> = {
         spaceDescLabel: 'Description (optional)',
         spaceDescPlaceholder: 'Describe the purpose of this space...',
         newSpace: 'New Space',
-        exportSpace: 'Export JSON',
+        exportSpace: 'Export',
+        exportFormatJson: 'Export as JSON',
+        exportFormatMarkdown: 'Export as Markdown',
+        exportFormatPdf: 'Export as PDF',
         importSpace: 'Import JSON',
         importBadFormat: 'This file is not a valid space export.',
         createSpace: 'Create Space',
@@ -894,6 +953,14 @@ export const translations: Record<Language, TranslationKeys> = {
         messengerCopyAction: 'Copy text',
         messengerNodeSection: 'Node discussions',
         messengerDiscussAction: 'Discuss',
+        messengerPinAction: 'Pin message',
+        messengerUnpinAction: 'Unpin message',
+        messengerPinnedSectionTitle: 'Pinned messages',
+        messengerReactAction: 'React',
+        messengerSearchAction: 'Search messages',
+        messengerSearchPlaceholder: 'Search in this conversation...',
+        messengerSearchNoResults: 'No messages found',
+        messengerSeenByLabel: 'Seen by',
         pushNotificationsLabel: 'Push notifications',
         pushNotificationsToggleLabel: 'Notify me about new messages',
         pushNotificationsUnsupported:
@@ -948,6 +1015,9 @@ export const translations: Record<Language, TranslationKeys> = {
         notificationsMarkAllRead: 'Отметить все прочитанными',
         notificationAccessGranted:
             '{owner} открыл(а) вам доступ ({role}) к «{space}»',
+        notificationMentionedInMessage: '{name} упомянул(а) вас: «{excerpt}»',
+        notificationMentionedInComment:
+            '{name} упомянул(а) вас в комментарии: «{excerpt}»',
         resetPasswordTitle: 'Сброс пароля',
         newPasswordLabel: 'Новый пароль (минимум 9 символов)',
         confirmPasswordLabel: 'Повторите пароль',
@@ -1021,10 +1091,22 @@ export const translations: Record<Language, TranslationKeys> = {
         tagsPlaceholder: 'напр. core, feature',
         addNode: 'Добавить узел',
         editNodeTitle: 'Редактировать узел',
+        nodeLockBlockedTitle: 'Редактируется другим пользователем',
+        nodeLockBlockedBody:
+            '{name} сейчас редактирует этот узел. Попробуйте чуть позже.',
+        nodeLockBadge: 'Сейчас редактирует: {name}',
+        sharedReadOnlyBadge: 'Публичный просмотр — только чтение',
+        sharedSubtreeBadge: 'Расшаренная ветвь',
+        sharedLoadingLabel: 'Загрузка...',
+        sharedSelectNodeHint: 'Выберите узел, чтобы увидеть подробности',
         saveChanges: 'Сохранить',
         coordinatesLabel: 'Координаты',
         parentsLabel: 'Родители',
         childrenLabel: 'Дети',
+        suggestedLinksLabel: 'Возможные связи',
+        suggestedLinksEmpty: 'Пока нет подсказок.',
+        acceptSuggestionAction: 'Связать этот узел',
+        dismissSuggestionAction: 'Отклонить',
         openInMaps: 'Открыть на карте',
         mapSectionLabel: 'Точка на карте',
         latLabel: 'Широта',
@@ -1042,6 +1124,7 @@ export const translations: Record<Language, TranslationKeys> = {
         globalSearchEmpty: 'Ничего не найдено.',
         globalSearchHint: 'Введите минимум 2 символа для поиска везде.',
         globalSearchAction: 'Искать везде',
+        globalSearchFoundByMeaning: 'Найдено по смыслу',
         nodeHistoryTitle: 'История изменений',
         nodeHistoryDesc: 'Снимки состояния перед каждой правкой',
         nodeHistoryEmpty: 'Правок пока не было.',
@@ -1122,6 +1205,14 @@ export const translations: Record<Language, TranslationKeys> = {
         shareRoleLabel: 'Роль',
         shareAction: 'Открыть доступ',
         shareEmptyLabel: 'Пока ни у кого нет доступа.',
+        publicLinkLabel: 'Публичная ссылка',
+        publicLinkDesc:
+            'Любой по этой ссылке сможет посмотреть пространство только для чтения, без входа в систему.',
+        generateLinkAction: 'Создать публичную ссылку',
+        copyLinkAction: 'Скопировать ссылку',
+        regenerateLinkAction: 'Обновить ссылку',
+        revokeLinkAction: 'Отозвать ссылку',
+        shareBranchAction: 'Поделиться веткой',
         revokeAccessAction: 'Забрать доступ',
         ownerLabel: 'Владелец',
         spacesSubtitle: 'Управление пространствами и переключение между ними',
@@ -1131,7 +1222,10 @@ export const translations: Record<Language, TranslationKeys> = {
         spaceDescLabel: 'Описание (необязательно)',
         spaceDescPlaceholder: 'Для чего это пространство...',
         newSpace: 'Новое пространство',
-        exportSpace: 'Выгрузить JSON',
+        exportSpace: 'Выгрузить',
+        exportFormatJson: 'Выгрузить в JSON',
+        exportFormatMarkdown: 'Выгрузить в Markdown',
+        exportFormatPdf: 'Выгрузить в PDF',
         importSpace: 'Загрузить JSON',
         importBadFormat: 'Это не похоже на выгрузку пространства.',
         createSpace: 'Создать',
@@ -1258,6 +1352,14 @@ export const translations: Record<Language, TranslationKeys> = {
         messengerCopyAction: 'Копировать текст',
         messengerNodeSection: 'Обсуждения узлов',
         messengerDiscussAction: 'Обсудить',
+        messengerPinAction: 'Закрепить сообщение',
+        messengerUnpinAction: 'Открепить сообщение',
+        messengerPinnedSectionTitle: 'Закреплённые сообщения',
+        messengerReactAction: 'Реакция',
+        messengerSearchAction: 'Поиск по сообщениям',
+        messengerSearchPlaceholder: 'Поиск в этом разговоре...',
+        messengerSearchNoResults: 'Сообщения не найдены',
+        messengerSeenByLabel: 'Прочитано:',
         pushNotificationsLabel: 'Push-уведомления',
         pushNotificationsToggleLabel: 'Уведомлять о новых сообщениях',
         pushNotificationsUnsupported:
@@ -1312,6 +1414,9 @@ export const translations: Record<Language, TranslationKeys> = {
         notificationsMarkAllRead: 'Ҳамаро хондашуда қайд кардан',
         notificationAccessGranted:
             '{owner} ба шумо дастрасии {role} ба «{space}» дод',
+        notificationMentionedInMessage: '{name} шуморо ёдовар шуд: «{excerpt}»',
+        notificationMentionedInComment:
+            '{name} шуморо дар шарҳ ёдовар шуд: «{excerpt}»',
         resetPasswordTitle: 'Бознишонии рамз',
         newPasswordLabel: 'Рамзи нав (на кам аз 9 аломат)',
         confirmPasswordLabel: 'Рамзро такрор кунед',
@@ -1384,10 +1489,22 @@ export const translations: Record<Language, TranslationKeys> = {
         tagsPlaceholder: 'мас. core, feature',
         addNode: 'Илова кардан',
         editNodeTitle: 'Таҳрири гузар',
+        nodeLockBlockedTitle: 'Аз ҷониби корбари дигар таҳрир мешавад',
+        nodeLockBlockedBody:
+            '{name} ҳоло ин гузарро таҳрир мекунад. Каме дертар боз кӯшиш кунед.',
+        nodeLockBadge: 'Ҳоло таҳрир мекунад: {name}',
+        sharedReadOnlyBadge: 'Намоиши ҷамъиятӣ — танҳо хондан',
+        sharedSubtreeBadge: 'Шохаи мубодилашуда',
+        sharedLoadingLabel: 'Боркунӣ...',
+        sharedSelectNodeHint: 'Барои дидани тафсилот гузарро интихоб кунед',
         saveChanges: 'Нигоҳ доштан',
         coordinatesLabel: 'Координатаҳо',
         parentsLabel: 'Волидон',
         childrenLabel: 'Фарзандон',
+        suggestedLinksLabel: 'Пайвандҳои пешниҳодшуда',
+        suggestedLinksEmpty: 'Ҳоло пешниҳоде нест.',
+        acceptSuggestionAction: 'Пайваст кардани ин гиреҳ',
+        dismissSuggestionAction: 'Рад кардан',
         openInMaps: 'Дар харита кушодан',
         mapSectionLabel: 'Нуқта дар харита',
         latLabel: 'Арз',
@@ -1406,6 +1523,7 @@ export const translations: Record<Language, TranslationKeys> = {
         globalSearchHint:
             'Барои ҷустуҷӯ дар ҳама ҷо на кам аз 2 аломат ворид кунед.',
         globalSearchAction: 'Ҷустуҷӯ дар ҳама ҷо',
+        globalSearchFoundByMeaning: 'Аз рӯи маъно ёфт шуд',
         nodeHistoryTitle: 'Таърихи тағйирот',
         nodeHistoryDesc: 'Аксҳо пеш аз ҳар тағйирот',
         nodeHistoryEmpty: 'Ҳанӯз тағйирот набудааст.',
@@ -1486,6 +1604,14 @@ export const translations: Record<Language, TranslationKeys> = {
         shareRoleLabel: 'Нақш',
         shareAction: 'Кушодани дастрасӣ',
         shareEmptyLabel: 'Ҳанӯз ба ҳеҷ кас дастрасӣ дода нашудааст.',
+        publicLinkLabel: 'Пайванди ҷамъиятӣ',
+        publicLinkDesc:
+            'Ҳар кас бо ин пайванд метавонад фазоро танҳо хонад, бидуни воридшавӣ.',
+        generateLinkAction: 'Сохтани пайванди ҷамъиятӣ',
+        copyLinkAction: 'Нусхабардории пайванд',
+        regenerateLinkAction: 'Навсозии пайванд',
+        revokeLinkAction: 'Бекор кардани пайванд',
+        shareBranchAction: 'Мубодилаи ин шоха',
         revokeAccessAction: 'Бекор кардани дастрасӣ',
         ownerLabel: 'Соҳиб',
         spacesSubtitle: 'Идора ва иваз кардани фазоҳо',
@@ -1495,7 +1621,10 @@ export const translations: Record<Language, TranslationKeys> = {
         spaceDescLabel: 'Тавсиф (ихтиёрӣ)',
         spaceDescPlaceholder: 'Ин фазо барои чист...',
         newSpace: 'Фазои нав',
-        exportSpace: 'Содироти JSON',
+        exportSpace: 'Содирот',
+        exportFormatJson: 'Содирот ба JSON',
+        exportFormatMarkdown: 'Содирот ба Markdown',
+        exportFormatPdf: 'Содирот ба PDF',
         importSpace: 'Воридоти JSON',
         importBadFormat: 'Ин файл ба содироти фазо монанд нест.',
         createSpace: 'Эҷод кардан',
@@ -1623,6 +1752,14 @@ export const translations: Record<Language, TranslationKeys> = {
         messengerCopyAction: 'Нусхабардории матн',
         messengerNodeSection: 'Баҳсҳои гузарҳо',
         messengerDiscussAction: 'Баҳс кардан',
+        messengerPinAction: 'Санҷоқ кардани паём',
+        messengerUnpinAction: 'Бекор кардани санҷоқ',
+        messengerPinnedSectionTitle: 'Паёмҳои санҷоқшуда',
+        messengerReactAction: 'Реаксия',
+        messengerSearchAction: 'Ҷустуҷӯи паёмҳо',
+        messengerSearchPlaceholder: 'Ҷустуҷӯ дар ин сӯҳбат...',
+        messengerSearchNoResults: 'Паём ёфт нашуд',
+        messengerSeenByLabel: 'Хонда шуд:',
         pushNotificationsLabel: 'Огоҳиномаҳои push',
         pushNotificationsToggleLabel: 'Дар бораи паёмҳои нав огоҳ кунед',
         pushNotificationsUnsupported:
@@ -1676,6 +1813,9 @@ export const translations: Record<Language, TranslationKeys> = {
         notificationsMarkAllRead: 'علامت‌گذاری همه به‌عنوان خوانده‌شده',
         notificationAccessGranted:
             '{owner} به شما دسترسی {role} به «{space}» داد',
+        notificationMentionedInMessage: '{name} شما را ذکر کرد: «{excerpt}»',
+        notificationMentionedInComment:
+            '{name} شما را در یک نظر ذکر کرد: «{excerpt}»',
         resetPasswordTitle: 'بازنشانی رمز عبور',
         newPasswordLabel: 'رمز عبور جدید (حداقل ۹ نویسه)',
         confirmPasswordLabel: 'تکرار رمز عبور',
@@ -1748,10 +1888,22 @@ export const translations: Record<Language, TranslationKeys> = {
         tagsPlaceholder: 'مثلاً core, feature',
         addNode: 'افزودن گره',
         editNodeTitle: 'ویرایش گره',
+        nodeLockBlockedTitle: 'در حال ویرایش توسط شخص دیگری',
+        nodeLockBlockedBody:
+            '{name} در حال حاضر این گره را ویرایش می‌کند. کمی بعد دوباره امتحان کنید.',
+        nodeLockBadge: 'در حال حاضر ویرایش می‌شود توسط {name}',
+        sharedReadOnlyBadge: 'نمای عمومی — فقط خواندنی',
+        sharedSubtreeBadge: 'شاخهٔ به‌اشتراک‌گذاشته‌شده',
+        sharedLoadingLabel: 'در حال بارگذاری...',
+        sharedSelectNodeHint: 'برای دیدن جزئیات یک گره را انتخاب کنید',
         saveChanges: 'ذخیره',
         coordinatesLabel: 'مختصات',
         parentsLabel: 'والدین',
         childrenLabel: 'فرزندان',
+        suggestedLinksLabel: 'پیوندهای پیشنهادی',
+        suggestedLinksEmpty: 'فعلاً پیشنهادی نیست.',
+        acceptSuggestionAction: 'اتصال این گره',
+        dismissSuggestionAction: 'رد کردن',
         openInMaps: 'باز کردن در نقشه',
         mapSectionLabel: 'نقطه روی نقشه',
         latLabel: 'عرض جغرافیایی',
@@ -1769,6 +1921,7 @@ export const translations: Record<Language, TranslationKeys> = {
         globalSearchEmpty: 'چیزی یافت نشد.',
         globalSearchHint: 'برای جستجو در همه‌جا حداقل ۲ نویسه وارد کنید.',
         globalSearchAction: 'جستجو در همه‌جا',
+        globalSearchFoundByMeaning: 'یافت‌شده بر اساس معنا',
         nodeHistoryTitle: 'تاریخچه ویرایش',
         nodeHistoryDesc: 'عکس‌های وضعیت پیش از هر تغییر',
         nodeHistoryEmpty: 'هنوز ویرایشی انجام نشده است.',
@@ -1848,6 +2001,14 @@ export const translations: Record<Language, TranslationKeys> = {
         shareRoleLabel: 'نقش',
         shareAction: 'اعطای دسترسی',
         shareEmptyLabel: 'هنوز کسی دسترسی ندارد.',
+        publicLinkLabel: 'پیوند عمومی',
+        publicLinkDesc:
+            'هر کسی با این پیوند می‌تواند این فضا را فقط برای خواندن، بدون ورود، ببیند.',
+        generateLinkAction: 'ساخت پیوند عمومی',
+        copyLinkAction: 'کپی پیوند',
+        regenerateLinkAction: 'بازسازی پیوند',
+        revokeLinkAction: 'لغو پیوند',
+        shareBranchAction: 'اشتراک‌گذاری این شاخه',
         revokeAccessAction: 'لغو دسترسی',
         ownerLabel: 'مالک',
         spacesSubtitle: 'مدیریت و جابه‌جایی بین فضاها',
@@ -1857,7 +2018,10 @@ export const translations: Record<Language, TranslationKeys> = {
         spaceDescLabel: 'توضیح (اختیاری)',
         spaceDescPlaceholder: 'هدف این فضا را بنویسید...',
         newSpace: 'فضای جدید',
-        exportSpace: 'خروجی JSON',
+        exportSpace: 'خروجی',
+        exportFormatJson: 'خروجی به JSON',
+        exportFormatMarkdown: 'خروجی به Markdown',
+        exportFormatPdf: 'خروجی به PDF',
         importSpace: 'ورودی JSON',
         importBadFormat: 'این فایل خروجی معتبر یک فضا نیست.',
         createSpace: 'ایجاد فضا',
@@ -1982,6 +2146,14 @@ export const translations: Record<Language, TranslationKeys> = {
         messengerCopyAction: 'کپی متن',
         messengerNodeSection: 'بحث‌های گره',
         messengerDiscussAction: 'بحث',
+        messengerPinAction: 'سنجاق کردن پیام',
+        messengerUnpinAction: 'برداشتن سنجاق',
+        messengerPinnedSectionTitle: 'پیام‌های سنجاق‌شده',
+        messengerReactAction: 'واکنش',
+        messengerSearchAction: 'جستجوی پیام‌ها',
+        messengerSearchPlaceholder: 'جستجو در این گفتگو...',
+        messengerSearchNoResults: 'پیامی یافت نشد',
+        messengerSeenByLabel: 'دیده‌شده توسط',
         pushNotificationsLabel: 'اعلان‌های پوش',
         pushNotificationsToggleLabel: 'دربارهٔ پیام‌های جدید مطلعم کن',
         pushNotificationsUnsupported:

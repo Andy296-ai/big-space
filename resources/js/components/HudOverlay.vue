@@ -45,6 +45,7 @@ const emit = defineEmits<{
     (e: 'open-space-activity-log'): void;
     (e: 'open-global-search'): void;
     (e: 'open-messenger'): void;
+    (e: 'open-conversation', conversationId: number): void;
     (e: 'open-team-manager'): void;
     (e: 'focus-node', nodeId: number): void;
     (e: 'undo'): void;
@@ -244,7 +245,9 @@ onUnmounted(() =>
                 <Activity class="h-4 w-4" />
             </button>
             <div class="max-md:hidden">
-                <NotificationBell />
+                <NotificationBell
+                    @open-conversation="emit('open-conversation', $event)"
+                />
             </div>
             <button
                 @click="emit('open-messenger')"
@@ -340,7 +343,9 @@ onUnmounted(() =>
                 <div
                     class="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-200"
                 >
-                    <NotificationBell />
+                    <NotificationBell
+                        @open-conversation="emit('open-conversation', $event)"
+                    />
                     <span>{{ t.notificationsAction }}</span>
                 </div>
                 <button

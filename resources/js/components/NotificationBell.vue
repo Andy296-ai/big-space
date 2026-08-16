@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { router, usePage } from '@inertiajs/vue3';
-import { Bell, CheckCheck, UserPlus } from 'lucide-vue-next';
+import { AtSign, Bell, CheckCheck, UserPlus } from 'lucide-vue-next';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { apiFetch } from '../lib/api';
 import { getEcho } from '../lib/echo';
@@ -13,6 +13,10 @@ interface NotificationEntry {
     read_at: string | null;
     created_at: string;
 }
+
+const emit = defineEmits<{
+    (e: 'open-conversation', conversationId: number): void;
+}>();
 
 const t = useT();
 
@@ -64,7 +68,23 @@ function describe(entry: NotificationEntry): string {
         });
     }
 
+    if (entry.type.endsWith('UserMentioned')) {
+        const name =
+            (entry.data.mentioned_by_name as string | undefined) ?? '?';
+        const excerpt = (entry.data.excerpt as string | undefined) ?? '';
+        const key =
+            entry.data.context_type === 'comment'
+                ? 'notificationMentionedInComment'
+                : 'notificationMentionedInMessage';
+
+        return fill(t.value[key], { name, excerpt });
+    }
+
     return entry.type;
+}
+
+function iconFor(entry: NotificationEntry) {
+    return entry.type.endsWith('UserMentioned') ? AtSign : UserPlus;
 }
 
 function formatTime(iso: string): string {
@@ -103,6 +123,25 @@ async function handleSelect(entry: NotificationEntry) {
 
     if (entry.type.endsWith('SpaceAccessGranted') && entry.data.space_slug) {
         router.get('/', { space: entry.data.space_slug as string });
+
+        return;
+    }
+
+    if (entry.type.endsWith('UserMentioned')) {
+        if (
+            entry.data.context_type === 'message' &&
+            entry.data.conversation_id
+        ) {
+            emit('open-conversation', entry.data.conversation_id as number);
+        } else if (
+            entry.data.context_type === 'comment' &&
+            entry.data.space_slug
+        ) {
+            router.get('/', {
+                space: entry.data.space_slug as string,
+                focus: entry.data.node_id as number,
+            });
+        }
     }
 }
 
@@ -197,7 +236,10 @@ onUnmounted(() => {
                         <div
                             class="mt-0.5 shrink-0 rounded-lg border border-blue-500/30 bg-blue-600/20 p-1.5 text-blue-400"
                         >
-                            <UserPlus class="h-3.5 w-3.5" />
+                            <component
+                                :is="iconFor(entry)"
+                                class="h-3.5 w-3.5"
+                            />
                         </div>
                         <div class="min-w-0 flex-1">
                             <p class="text-xs text-slate-200">

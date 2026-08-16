@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Collection;
 
 /**
  * @property string|null $role Роль текущего пользователя в этом пространстве
@@ -133,6 +134,23 @@ class Space extends Model
             })
             ->pluck('id')
             ->all();
+    }
+
+    /**
+     * Кандидаты на @упоминание в комментариях этого узла/пространства —
+     * владелец, все root'ы и все, кому пространство расшарено. Не персональный
+     * охват под конкретного читателя (в отличие от isAccessibleBy/roleFor) —
+     * один и тот же список для всех, кто пишет комментарий здесь.
+     *
+     * @return Collection<int, string> id => name
+     */
+    public function mentionableUsers(): Collection
+    {
+        $sharedIds = $this->collaborators()->pluck('users.id')->push($this->user_id);
+
+        return User::where('is_root', true)
+            ->orWhereIn('id', $sharedIds)
+            ->pluck('name', 'id');
     }
 
     /**
