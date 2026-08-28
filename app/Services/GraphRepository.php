@@ -676,6 +676,12 @@ class GraphRepository
                     'pos_y' => $original->pos_y + $deltaY,
                     'pos_z' => $original->pos_z,
                     'depth' => $depth,
+                    // shape/logo_path уже не копировались и до нас
+                    // (существующий, не наш пробел) — node_type_id/
+                    // custom_fields копируем явно, чтобы клон типизированного
+                    // узла оставался тем же типом, а не терял его молча.
+                    'node_type_id' => $original->node_type_id,
+                    'custom_fields' => $original->custom_fields,
                 ]);
 
                 $idMap[$originalId] = $clone->id;

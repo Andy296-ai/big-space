@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Node;
+use App\Models\NodeType;
 use App\Models\Space;
 use App\Models\User;
 
@@ -107,6 +108,34 @@ test('adding a child inherits the tree default shape/color when not explicitly g
 
     expect($response->json('node.shape'))->toBe('triangle');
     expect($response->json('node.color'))->toBe('#00ff00');
+});
+
+test('saving a default node type is only a hint - it does not force the type onto addChild', function () {
+    $this->actingAs($this->editor);
+    $contact = NodeType::create(['space_id' => $this->space->id, 'key' => 'contact', 'label' => 'Contact']);
+
+    $this->putJson("/api/spaces/{$this->space->id}/nodes/{$this->root->id}/tree-settings", [
+        'default_node_type_id' => $contact->id,
+    ])->assertStatus(200)->assertJsonPath('default_node_type_id', $contact->id);
+
+    $this->assertDatabaseHas('nodes', ['id' => $this->root->id, 'default_node_type_id' => $contact->id]);
+
+    // Unlike default_shape/default_color, the server never applies this as a
+    // fallback on addChild() — it's frontend-only pre-select (see plan §8).
+    $response = $this->postJson("/api/spaces/{$this->space->id}/nodes/{$this->root->id}/child", [
+        'title' => 'Untyped child',
+    ])->assertStatus(201);
+    expect($response->json('node.node_type_id'))->toBeNull();
+});
+
+test('a default node type from another space is rejected', function () {
+    $this->actingAs($this->editor);
+    $foreignSpace = Space::create(['name' => 'Foreign', 'slug' => 'foreign-tree-space', 'user_id' => $this->owner->id]);
+    $foreignType = NodeType::create(['space_id' => $foreignSpace->id, 'key' => 'secret', 'label' => 'Secret']);
+
+    $this->putJson("/api/spaces/{$this->space->id}/nodes/{$this->root->id}/tree-settings", [
+        'default_node_type_id' => $foreignType->id,
+    ])->assertStatus(422);
 });
 
 test('adding a child with an explicit shape/color overrides the tree default', function () {

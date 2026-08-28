@@ -37,7 +37,7 @@ import AttachmentViewer from './AttachmentViewer.vue';
 import NodeCommentsModal from './NodeCommentsModal.vue';
 import NodeHistoryModal from './NodeHistoryModal.vue';
 import ShareNodeModal from './ShareNodeModal.vue';
-import type { AttachmentData, NodeData } from './SpaceScene.vue';
+import type { AttachmentData, NodeData, NodeTypeEntry } from './SpaceScene.vue';
 import SpaceStructureViewer from './SpaceStructureViewer.vue';
 import TreeSettingsModal from './TreeSettingsModal.vue';
 
@@ -53,6 +53,9 @@ const props = defineProps<{
     currentUserId: number;
     /** Живой сигнал node.lock.changed, см. Welcome.vue — null, если узел свободен или блокировку держит сам зритель. */
     lockedBy: { id: number; name: string } | null;
+    nodeTypes: NodeTypeEntry[];
+    /** Для подписи значений полей-связей без похода на сервер (см. AddNodeModal). */
+    allNodes: NodeData[];
 }>();
 
 const t = useT();
@@ -129,6 +132,81 @@ const visibleTags = computed(() =>
 );
 
 const attachments = computed(() => props.node?.attachments ?? []);
+
+const nodeType = computed(
+    () =>
+        props.nodeTypes.find((nt) => nt.id === props.node?.node_type_id) ??
+        null,
+);
+
+interface CustomFieldRow {
+    key: string;
+    label: string;
+    kind: string;
+    value: unknown;
+}
+
+/** Обычные поля типа — всё, кроме relation/photo/files (у тех своё представление). */
+const customFieldRows = computed<CustomFieldRow[]>(() => {
+    const fields = nodeType.value?.field_schema;
+    const values = props.node?.custom_fields;
+
+    if (!fields || !values) {
+        return [];
+    }
+
+    return fields
+        .filter(
+            (f) =>
+                f.type !== 'relation' &&
+                f.type !== 'photo' &&
+                f.type !== 'files',
+        )
+        .map((f) => ({
+            key: f.key,
+            label: f.label,
+            kind: f.type,
+            value: values[f.key],
+        }))
+        .filter(
+            (row) =>
+                row.value !== null &&
+                row.value !== undefined &&
+                row.value !== '' &&
+                !(Array.isArray(row.value) && row.value.length === 0),
+        );
+});
+
+interface RelationFieldRow {
+    key: string;
+    label: string;
+    target: NodeData | null;
+}
+
+const relationFieldRows = computed<RelationFieldRow[]>(() => {
+    const fields = nodeType.value?.field_schema;
+    const values = props.node?.custom_fields;
+
+    if (!fields || !values) {
+        return [];
+    }
+
+    return fields
+        .filter((f) => f.type === 'relation' && values[f.key] != null)
+        .map((f) => ({
+            key: f.key,
+            label: f.label,
+            target: props.allNodes.find((n) => n.id === values[f.key]) ?? null,
+        }));
+});
+
+function formatFieldValue(row: CustomFieldRow): string {
+    if (row.kind === 'multiselect' && Array.isArray(row.value)) {
+        return row.value.join(', ');
+    }
+
+    return String(row.value);
+}
 
 /** Подгружается один раз при первом раскрытии секции, не при каждом открытии карточки узла. */
 async function loadSuggestedLinks() {
@@ -437,6 +515,84 @@ onBeforeUnmount(() => destroyMap());
                     class="px-1 text-xs font-bold text-slate-500"
                     >…</span
                 >
+            </div>
+
+            <!-- Пользовательские поля типа узла -->
+            <div
+                v-if="customFieldRows.length"
+                class="rounded-xl border border-slate-700/40 bg-slate-800/50 p-2.5"
+            >
+                <div
+                    class="mb-1.5 text-[10px] font-bold tracking-wider text-slate-400 uppercase"
+                >
+                    {{ nodeType?.label }}
+                </div>
+                <div class="space-y-1.5">
+                    <div
+                        v-for="row in customFieldRows"
+                        :key="row.key"
+                        class="flex items-start justify-between gap-3 text-xs"
+                    >
+                        <span class="shrink-0 text-slate-400">{{
+                            row.label
+                        }}</span>
+                        <span
+                            v-if="row.kind === 'checkbox'"
+                            class="min-w-0 flex-1 text-end font-medium text-slate-200"
+                        >
+                            {{
+                                row.value ? t.booleanYesLabel : t.booleanNoLabel
+                            }}
+                        </span>
+                        <a
+                            v-else-if="row.kind === 'url'"
+                            :href="String(row.value)"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="min-w-0 flex-1 truncate text-end font-medium text-blue-400 hover:underline"
+                        >
+                            {{ row.value }}
+                        </a>
+                        <span
+                            v-else
+                            class="min-w-0 flex-1 text-end font-medium break-words text-slate-200"
+                        >
+                            {{ formatFieldValue(row) }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Поля-связи типа узла: свой визуальный блок, не смешивается с родителями/детьми -->
+            <div
+                v-for="rel in relationFieldRows"
+                :key="rel.key"
+                class="rounded-xl border border-violet-700/30 bg-violet-500/5 p-2.5"
+            >
+                <div
+                    class="mb-1.5 text-[10px] font-bold tracking-wider text-violet-300 uppercase"
+                >
+                    {{ rel.label }}
+                </div>
+                <button
+                    v-if="rel.target"
+                    type="button"
+                    @click="emit('focus-node', rel.target.id)"
+                    class="flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900/60 px-2.5 py-1 text-[11px] text-slate-200 transition-colors hover:border-blue-500 hover:text-blue-300"
+                >
+                    <span
+                        class="h-1.5 w-1.5 shrink-0 rounded-full"
+                        :style="{
+                            backgroundColor: rel.target.color || '#3b82f6',
+                        }"
+                    />
+                    <span class="max-w-[12rem] truncate">{{
+                        rel.target.title || t.untitledNode
+                    }}</span>
+                </button>
+                <span v-else class="text-[11px] text-slate-500 italic">{{
+                    t.relationStaleLabel
+                }}</span>
             </div>
 
             <!-- Связи: родители/дети, клик переключает панель на них -->
@@ -850,6 +1006,7 @@ onBeforeUnmount(() => destroyMap());
         v-if="showTreeSettings && node"
         :space-id="spaceId"
         :node="node"
+        :node-types="nodeTypes"
         @close="showTreeSettings = false"
         @updated="
             (updated) => {

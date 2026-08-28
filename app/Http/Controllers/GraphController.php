@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Services\EmbeddingService;
 use App\Services\GraphRepository;
 use App\Services\LayoutEngine;
+use App\Services\NodeTypeFieldValidator;
 use App\Services\SpaceProvisioner;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -34,6 +35,7 @@ class GraphController extends Controller
     public function __construct(
         protected GraphRepository $graphRepo,
         protected EmbeddingService $embeddings,
+        protected NodeTypeFieldValidator $nodeTypeFields,
     ) {}
 
     /** Снимок для отмены удаления привязан к пространству, чтобы токен нельзя было применить к чужому. */
@@ -121,6 +123,33 @@ class GraphController extends Controller
         ]);
     }
 
+    /**
+     * Поиск узла внутри ОДНОГО пространства — для пикера значения поля-связи
+     * (NodeTypeFieldsEditor/RelationFieldPicker.vue). Отдельная ручка от
+     * SearchController::index() намеренно: та ищет по всем доступным
+     * пространствам разом, рисковать её скоупом ради этого не стоит.
+     */
+    public function searchNodes(Request $request, Space $space): JsonResponse
+    {
+        $query = trim((string) $request->query('q', ''));
+
+        if (mb_strlen($query) < 2) {
+            return response()->json([]);
+        }
+
+        // Тот же приём экранирования LIKE, что и в SearchController::index().
+        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], $query);
+        $needle = '%'.$escaped.'%';
+
+        $nodes = Node::where('space_id', $space->id)
+            ->whereRaw('title LIKE ? ESCAPE ?', [$needle, '\\'])
+            ->orderBy('title')
+            ->limit(20)
+            ->get(['id', 'title', 'color', 'shape']);
+
+        return response()->json($nodes);
+    }
+
     public function createRoot(Request $request, Space $space): JsonResponse
     {
         $validated = $request->validate([
@@ -135,7 +164,14 @@ class GraphController extends Controller
             'pos_y' => 'nullable|numeric',
             'pos_z' => 'nullable|numeric',
             'shape' => ['nullable', Rule::in(Node::SHAPES)],
+            'node_type_id' => 'nullable|integer',
+            'custom_fields' => 'nullable|array',
         ]);
+
+        // Тип всегда перезагружается по id и скоупится на пространство —
+        // присланной клиентом схеме не доверяем (см. NodeTypeFieldValidator).
+        $nodeType = $this->nodeTypeFields->resolveType($validated['node_type_id'] ?? null, $space);
+        $customFields = $this->nodeTypeFields->sanitize($nodeType, $validated['custom_fields'] ?? [], $space);
 
         $node = Node::create([
             'space_id' => $space->id,
@@ -151,6 +187,8 @@ class GraphController extends Controller
             'pos_y' => $validated['pos_y'] ?? 0,
             'pos_z' => $validated['pos_z'] ?? 0,
             'depth' => 0,
+            'node_type_id' => $nodeType?->id,
+            'custom_fields' => $customFields,
         ]);
         $node->update(['tree_root_id' => $node->id]);
         $this->embedNode($node);
@@ -180,9 +218,14 @@ class GraphController extends Controller
             'map_lon' => 'nullable|numeric|between:-180,180',
             'map_title' => 'nullable|string|max:255',
             'shape' => ['nullable', Rule::in(Node::SHAPES)],
+            'node_type_id' => 'nullable|integer',
+            'custom_fields' => 'nullable|array',
         ]);
 
-        $child = DB::transaction(function () use ($space, $parent, $validated) {
+        $nodeType = $this->nodeTypeFields->resolveType($validated['node_type_id'] ?? null, $space);
+        $customFields = $this->nodeTypeFields->sanitize($nodeType, $validated['custom_fields'] ?? [], $space);
+
+        $child = DB::transaction(function () use ($space, $parent, $validated, $nodeType, $customFields) {
             // Блокируем родителя на время чтения числа детей — иначе два
             // параллельных addChild() к одному родителю читают одинаковый
             // count() и ставят новые узлы друг на друга.
@@ -210,6 +253,8 @@ class GraphController extends Controller
                 'pos_z' => $pos['z'],
                 'depth' => $lockedParent->depth + 1,
                 'tree_root_id' => $lockedParent->tree_root_id ?? $lockedParent->id,
+                'node_type_id' => $nodeType?->id,
+                'custom_fields' => $customFields,
             ]);
 
             Edge::create([
@@ -329,7 +374,20 @@ class GraphController extends Controller
             'pos_x' => 'nullable|numeric',
             'pos_y' => 'nullable|numeric',
             'shape' => ['nullable', Rule::in(Node::SHAPES)],
+            'node_type_id' => 'nullable|integer',
+            'custom_fields' => 'nullable|array',
         ]);
+
+        // node_type_id отсутствует в запросе целиком (не null, а именно
+        // отсутствует) — сохраняем текущий тип узла как есть, не сбрасываем
+        // его в "без типа". Если тип не поменялся и новые custom_fields не
+        // прислали — пересобираем их из уже сохранённых значений (заодно
+        // естественно подчищает поля, которых больше нет в схеме типа).
+        $requestedTypeId = array_key_exists('node_type_id', $validated) ? $validated['node_type_id'] : $node->node_type_id;
+        $nodeType = $this->nodeTypeFields->resolveType($requestedTypeId, $space);
+        $customFieldsInput = $validated['custom_fields']
+            ?? ($requestedTypeId === $node->node_type_id ? ($node->custom_fields ?? []) : []);
+        $customFields = $this->nodeTypeFields->sanitize($nodeType, $customFieldsInput, $space);
 
         // Снимок состояния ДО правки — чтобы её можно было откатить одной кнопкой.
         NodeRevision::snapshot($node, $request->user());
@@ -343,6 +401,8 @@ class GraphController extends Controller
             'map_lat' => $validated['map_lat'] ?? null,
             'map_lon' => $validated['map_lon'] ?? null,
             'map_title' => $validated['map_title'] ?? null,
+            'node_type_id' => $nodeType?->id,
+            'custom_fields' => $customFields,
             // Координаты редактируются вручную только у корневых узлов — у
             // остальных при отсутствии значения оставляем как есть.
             'pos_x' => $validated['pos_x'] ?? $node->pos_x,
@@ -432,6 +492,13 @@ class GraphController extends Controller
             'map_title' => $revision->map_title,
             'pos_x' => $revision->pos_x ?? $node->pos_x,
             'pos_y' => $revision->pos_y ?? $node->pos_y,
+            // Тип/кастомные поля восстанавливаются как есть из снимка —
+            // без пересчёта через NodeTypeFieldValidator: снимок уже был
+            // валидным значением на момент своего сохранения, а тип, на
+            // который он ссылался, мог с тех пор измениться или исчезнуть
+            // (тогда node_type_id снимка уже null благодаря nullOnDelete).
+            'node_type_id' => $revision->node_type_id,
+            'custom_fields' => $revision->custom_fields,
         ]);
 
         return response()->json($node->load('attachments'));
@@ -762,6 +829,11 @@ class GraphController extends Controller
 
         DB::transaction(function () use ($backup, $space) {
             foreach ($backup['nodes'] as $node) {
+                // shape/map_*/logo_path уже отсутствовали в этом списке
+                // до нас (существующий, не наш пробел — как и в
+                // GraphRepository::copySubtree()) — node_type_id/
+                // custom_fields добавляем явно, чтобы отмена удаления
+                // типизированного узла не "разтипизировала" его молча.
                 DB::table('nodes')->insertOrIgnore([
                     'id' => $node['id'],
                     'space_id' => $space->id,
@@ -774,6 +846,8 @@ class GraphController extends Controller
                     'color' => $node['color'],
                     'tags' => $node['tags'],
                     'tree_root_id' => null,
+                    'node_type_id' => $node['node_type_id'],
+                    'custom_fields' => $node['custom_fields'] !== null ? json_encode($node['custom_fields']) : null,
                     'created_at' => $node['created_at'],
                     'updated_at' => $node['updated_at'],
                 ]);

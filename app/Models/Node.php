@@ -38,6 +38,9 @@ class Node extends Model
         'linked_user_id',
         'linked_space_id',
         'logo_path',
+        'node_type_id',
+        'custom_fields',
+        'default_node_type_id',
     ];
 
     protected $casts = [
@@ -51,6 +54,9 @@ class Node extends Model
         'linked_user_id' => 'integer',
         'linked_space_id' => 'integer',
         'locked_at' => 'datetime',
+        'node_type_id' => 'integer',
+        'custom_fields' => 'array',
+        'default_node_type_id' => 'integer',
     ];
 
     /**
@@ -157,6 +163,24 @@ class Node extends Model
     public function treeRoot(): BelongsTo
     {
         return $this->belongsTo(Node::class, 'tree_root_id');
+    }
+
+    /** @return BelongsTo<NodeType, $this> */
+    public function nodeType(): BelongsTo
+    {
+        return $this->belongsTo(NodeType::class);
+    }
+
+    /**
+     * Подсказка для формы "добавить ребёнка" под этим корнем — не
+     * форсируется на сервере (в отличие от default_shape/default_color),
+     * фронт сам решает, предзаполнять тип в форме или нет.
+     *
+     * @return BelongsTo<NodeType, $this>
+     */
+    public function defaultNodeType(): BelongsTo
+    {
+        return $this->belongsTo(NodeType::class, 'default_node_type_id');
     }
 
     /** @return HasMany<Edge, $this> */

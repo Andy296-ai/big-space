@@ -11,6 +11,7 @@ import {
     Layers,
     LogOut,
     ScrollText,
+    Shapes,
     Telescope,
     Users,
     Wand2,
@@ -47,6 +48,7 @@ const emit = defineEmits<{
     (e: 'open-messenger'): void;
     (e: 'open-conversation', conversationId: number): void;
     (e: 'open-team-manager'): void;
+    (e: 'open-node-types'): void;
     (e: 'focus-node', nodeId: number): void;
     (e: 'undo'): void;
     (e: 'auto-layout'): void;
@@ -244,6 +246,14 @@ onUnmounted(() =>
             >
                 <Activity class="h-4 w-4" />
             </button>
+            <button
+                v-if="canEdit"
+                @click="emit('open-node-types')"
+                class="rounded-xl border border-slate-600/50 bg-slate-800 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white max-md:hidden"
+                :title="t.nodeTypesManagerAction"
+            >
+                <Shapes class="h-4 w-4" />
+            </button>
             <div class="max-md:hidden">
                 <NotificationBell
                     @open-conversation="emit('open-conversation', $event)"
@@ -339,6 +349,14 @@ onUnmounted(() =>
                 >
                     <Activity class="h-4 w-4 text-slate-400" />
                     <span>{{ t.spaceActivityLogAction }}</span>
+                </button>
+                <button
+                    v-if="canEdit"
+                    @click="selectMoreMenuAction(() => emit('open-node-types'))"
+                    class="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-semibold text-slate-200 transition-colors hover:bg-slate-800"
+                >
+                    <Shapes class="h-4 w-4 text-slate-400" />
+                    <span>{{ t.nodeTypesManagerAction }}</span>
                 </button>
                 <div
                     class="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-200"

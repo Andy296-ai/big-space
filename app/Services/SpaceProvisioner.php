@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Edge;
 use App\Models\Node;
+use App\Models\NodeType;
 use App\Models\Space;
 use App\Models\User;
 use Illuminate\Support\Str;
@@ -21,6 +22,7 @@ class SpaceProvisioner
         string $name,
         string $description = '',
         string $structure = Space::STRUCTURE_DAG,
+        ?string $template = null,
     ): Space {
         $space = Space::create([
             'user_id' => $user->id,
@@ -43,9 +45,56 @@ class SpaceProvisioner
         ]);
         $root->update(['tree_root_id' => $root->id]);
 
+        if ($template !== null) {
+            $this->applyTemplate($space, $template);
+        }
+
         $this->linkIntoAdminSpace($user, $space);
 
         return $space;
+    }
+
+    /**
+     * Заводит пару типов узлов и один-два примерных корня рядом с "Origin"
+     * (см. config/space_templates.php). Неизвестный ключ шаблона молча
+     * игнорируется — пространство всё равно создаётся с одним "Origin",
+     * как и раньше без шаблона.
+     */
+    private function applyTemplate(Space $space, string $template): void
+    {
+        $config = config("space_templates.{$template}");
+
+        if ($config === null) {
+            return;
+        }
+
+        $typeIdsByKey = [];
+
+        foreach ($config['node_types'] ?? [] as $typeDef) {
+            $type = NodeType::create([
+                'space_id' => $space->id,
+                'key' => $typeDef['key'],
+                'label' => $typeDef['label'],
+                'icon' => $typeDef['icon'] ?? null,
+                'color' => $typeDef['color'] ?? null,
+                'field_schema' => $typeDef['field_schema'] ?? [],
+            ]);
+            $typeIdsByKey[$typeDef['key']] = $type->id;
+        }
+
+        foreach (($config['roots'] ?? []) as $index => $rootDef) {
+            $root = Node::create([
+                'space_id' => $space->id,
+                'title' => $rootDef['title'],
+                'pos_x' => 260 * ($index + 1),
+                'pos_y' => 0,
+                'pos_z' => 0,
+                'depth' => 0,
+                'color' => $rootDef['color'] ?? null,
+                'node_type_id' => $typeIdsByKey[$rootDef['type_key']] ?? null,
+            ]);
+            $root->update(['tree_root_id' => $root->id]);
+        }
     }
 
     /** Свободный slug на основе названия. */

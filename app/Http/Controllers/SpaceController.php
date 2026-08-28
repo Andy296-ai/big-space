@@ -7,6 +7,7 @@ use App\Models\ActivityLog;
 use App\Models\Edge;
 use App\Models\Node;
 use App\Models\NodeAttachment;
+use App\Models\NodeType;
 use App\Models\Space;
 use App\Services\GraphRepository;
 use App\Services\SpaceProvisioner;
@@ -59,6 +60,7 @@ class SpaceController extends Controller
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
             'structure' => ['nullable', Rule::in(Space::STRUCTURES)],
+            'template' => ['nullable', 'string', Rule::in(array_keys(config('space_templates')))],
         ]);
 
         $space = $provisioner->createForUser(
@@ -66,6 +68,7 @@ class SpaceController extends Controller
             $validated['name'],
             $validated['description'] ?? '',
             $validated['structure'] ?? Space::STRUCTURE_DAG,
+            $validated['template'] ?? null,
         );
 
         return response()->json($space->loadCount(['nodes', 'edges']), 201);
@@ -132,7 +135,7 @@ class SpaceController extends Controller
         );
 
         $nodes = Node::where('space_id', $space->id)
-            ->with('attachments')
+            ->with(['attachments', 'nodeType'])
             ->orderBy('id')
             ->get();
         $keyOf = $nodes->pluck('id')->flip()->map(fn ($i) => $i + 1);
@@ -145,6 +148,20 @@ class SpaceController extends Controller
                 'description' => $space->description ?? '',
                 'structure' => $space->structure,
             ],
+            // key — тот же машинный ключ, что и в самой таблице (уникален в
+            // пределах пространства и человекочитаем), поэтому типы, в
+            // отличие от узлов/рёбер, не нуждаются в перенумерации id при импорте.
+            'node_types' => NodeType::where('space_id', $space->id)
+                ->orderBy('id')
+                ->get()
+                ->map(fn (NodeType $nt) => [
+                    'key' => $nt->key,
+                    'label' => $nt->label,
+                    'icon' => $nt->icon,
+                    'color' => $nt->color,
+                    'field_schema' => $nt->field_schema ?? [],
+                ])
+                ->values(),
             'nodes' => $nodes->map(fn (Node $n) => [
                 'key' => $keyOf[$n->id],
                 'title' => $n->title,
@@ -157,6 +174,8 @@ class SpaceController extends Controller
                 'map_lat' => $n->map_lat,
                 'map_lon' => $n->map_lon,
                 'map_title' => $n->map_title,
+                'node_type' => $n->nodeType?->key,
+                'custom_fields' => $n->custom_fields,
                 // Выгружаем только ссылки: у загруженного файла адреса нет,
                 // а содержимое в JSON не поместить — такой файл не пережил бы
                 // обратный импорт. Файлы остаются в хранилище пространства.
@@ -299,6 +318,17 @@ class SpaceController extends Controller
             'space.name' => 'required|string|max:255',
             'space.description' => 'nullable|string',
             'space.structure' => ['nullable', Rule::in(Space::STRUCTURES)],
+            'node_types' => 'nullable|array',
+            'node_types.*.key' => 'required|string|max:255',
+            'node_types.*.label' => 'required|string|max:255',
+            'node_types.*.icon' => 'nullable|string|max:32',
+            'node_types.*.color' => 'nullable|string|max:32',
+            'node_types.*.field_schema' => 'nullable|array',
+            'node_types.*.field_schema.*.key' => 'required|string|max:255',
+            'node_types.*.field_schema.*.label' => 'required|string|max:255',
+            'node_types.*.field_schema.*.type' => ['required', Rule::in(NodeType::FIELD_KINDS)],
+            'node_types.*.field_schema.*.required' => 'nullable|boolean',
+            'node_types.*.field_schema.*.options' => 'nullable|array',
             'nodes' => 'required|array|min:1|max:'.self::MAX_IMPORT_NODES,
             'nodes.*.key' => 'required|integer',
             'nodes.*.title' => 'nullable|string|max:255',
@@ -310,6 +340,8 @@ class SpaceController extends Controller
             'nodes.*.map_lat' => 'nullable|numeric|between:-90,90',
             'nodes.*.map_lon' => 'nullable|numeric|between:-180,180',
             'nodes.*.map_title' => 'nullable|string|max:255',
+            'nodes.*.node_type' => 'nullable|string|max:255',
+            'nodes.*.custom_fields' => 'nullable|array',
             'nodes.*.attachments' => 'nullable|array',
             'nodes.*.attachments.*.kind' => ['nullable', Rule::in(NodeAttachment::KINDS)],
             'nodes.*.attachments.*.label' => 'nullable|string|max:255',
@@ -352,6 +384,20 @@ class SpaceController extends Controller
             'structure' => $structure,
         ]);
 
+        $typeIdOf = [];
+
+        foreach ($validated['node_types'] ?? [] as $type) {
+            $created = NodeType::create([
+                'space_id' => $space->id,
+                'key' => $type['key'],
+                'label' => $type['label'],
+                'icon' => $type['icon'] ?? null,
+                'color' => $type['color'] ?? null,
+                'field_schema' => $type['field_schema'] ?? [],
+            ]);
+            $typeIdOf[$type['key']] = $created->id;
+        }
+
         $idOf = [];
 
         foreach ($validated['nodes'] as $node) {
@@ -368,6 +414,8 @@ class SpaceController extends Controller
                 'map_lat' => $node['map_lat'] ?? null,
                 'map_lon' => $node['map_lon'] ?? null,
                 'map_title' => $node['map_title'] ?? null,
+                'node_type_id' => isset($node['node_type']) ? ($typeIdOf[$node['node_type']] ?? null) : null,
+                'custom_fields' => $node['custom_fields'] ?? null,
             ]);
 
             foreach (array_values($node['attachments'] ?? []) as $position => $attachment) {

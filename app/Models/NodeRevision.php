@@ -31,6 +31,8 @@ class NodeRevision extends Model
         'map_title',
         'pos_x',
         'pos_y',
+        'node_type_id',
+        'custom_fields',
     ];
 
     protected $casts = [
@@ -38,6 +40,8 @@ class NodeRevision extends Model
         'map_lon' => 'float',
         'pos_x' => 'float',
         'pos_y' => 'float',
+        'node_type_id' => 'integer',
+        'custom_fields' => 'array',
     ];
 
     /** @return BelongsTo<Node, $this> */
@@ -68,6 +72,8 @@ class NodeRevision extends Model
             'map_title' => $node->map_title,
             'pos_x' => $node->pos_x,
             'pos_y' => $node->pos_y,
+            'node_type_id' => $node->node_type_id,
+            'custom_fields' => $node->custom_fields,
         ]);
 
         // id растёт строго по мере вставки, поэтому как граница по времени

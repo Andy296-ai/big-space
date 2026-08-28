@@ -14,6 +14,7 @@ import LinkNodeDialog from '../components/LinkNodeDialog.vue';
 import MessengerPanel from '../components/MessengerPanel.vue';
 import Minimap from '../components/Minimap.vue';
 import NodeInfoDialog from '../components/NodeInfoDialog.vue';
+import NodeTypeManagerModal from '../components/NodeTypeManagerModal.vue';
 import ResetPasswordModal from '../components/ResetPasswordModal.vue';
 import SettingsPanel from '../components/SettingsPanel.vue';
 import ShareSpaceModal from '../components/ShareSpaceModal.vue';
@@ -25,6 +26,7 @@ import type {
     EdgeData,
     NodeData,
     NodeShape,
+    NodeTypeEntry,
     PresenceUser,
     RemoteCursor,
 } from '../components/SpaceScene.vue';
@@ -66,6 +68,7 @@ const isSpaceOwnerOrRoot = computed(
 
 const nodes = ref<NodeData[]>([]);
 const edges = ref<EdgeData[]>([]);
+const nodeTypes = ref<NodeTypeEntry[]>([]);
 
 const selectedNode = ref<NodeData | null>(null);
 const hoveredNode = ref<NodeData | null>(null);
@@ -117,6 +120,7 @@ const showMessenger = ref(false);
 const messengerUnreadCount = ref(0);
 const messengerInitialConversationId = ref<number | null>(null);
 const showTeamManager = ref(false);
+const showNodeTypesModal = ref(false);
 const shareTargetSpace = ref<SpaceItem | null>(null);
 const addModalParentNode = ref<NodeData | null>(null);
 
@@ -295,9 +299,22 @@ async function loadGraph() {
     }
 }
 
+/** Список типов узлов пространства — для формы создания/редактирования и
+ * менеджера типов. Не входит в /graph, грузится отдельно. */
+async function loadNodeTypes() {
+    try {
+        const res = await apiFetch(
+            `/api/spaces/${props.currentSpace.id}/node-types`,
+        );
+        nodeTypes.value = await res.json();
+    } catch (err) {
+        console.error('Failed to load node types:', err);
+    }
+}
+
 onMounted(async () => {
     applyTheme(appSettings.value);
-    await loadGraph();
+    await Promise.all([loadGraph(), loadNodeTypes()]);
 
     // Переход из глобального поиска (?focus=id) — сервер уже проверил, что
     // узел действительно в этом пространстве (см. GraphController::index).
@@ -971,6 +988,8 @@ async function handleAddNode(payload: {
     shape: NodeShape;
     logoFile: File | null;
     pending: PendingAttachment[];
+    node_type_id: number | null;
+    custom_fields: Record<string, unknown>;
 }) {
     showAddModal.value = false;
 
@@ -1067,6 +1086,8 @@ async function handleEditNode(payload: {
     shape: NodeShape;
     logoFile: File | null;
     pending: PendingAttachment[];
+    node_type_id: number | null;
+    custom_fields: Record<string, unknown>;
 }) {
     const { pending, logoFile, ...fields } = payload;
 
@@ -1312,6 +1333,7 @@ function handleGlobalSearchSelect(payload: {
 async function handleCreateSpace(payload: {
     name: string;
     description: string;
+    template?: string;
 }) {
     try {
         const res = await apiFetch('/api/spaces', {
@@ -1405,6 +1427,7 @@ async function handleDeleteSpace(spaceId: number) {
             @open-messenger="showMessenger = true"
             @open-conversation="openConversationFromNotification"
             @open-team-manager="showTeamManager = true"
+            @open-node-types="showNodeTypesModal = true"
             @open-add-root-modal="openAddRootModal"
             @focus-node="handleFocusNode"
             @undo="handleUndo"
@@ -1455,6 +1478,8 @@ async function handleDeleteSpace(spaceId: number) {
             "
             :parent-nodes="selectedNodeParents"
             :child-nodes="selectedNodeChildren"
+            :node-types="nodeTypes"
+            :all-nodes="nodes"
             @close="selectedNode = null"
             @focus-node="handleFocusNode"
             @open-add-child="openAddChildModal"
@@ -1510,6 +1535,9 @@ async function handleDeleteSpace(spaceId: number) {
             v-if="showAddModal"
             :parent-node="addModalParentNode"
             :is-admin-space="currentSpace.is_admin"
+            :space-id="currentSpace.id"
+            :node-types="nodeTypes"
+            :all-nodes="nodes"
             @close="showAddModal = false"
             @submit="handleAddNode"
             @submit-user="handleAddUser"
@@ -1519,6 +1547,8 @@ async function handleDeleteSpace(spaceId: number) {
             v-if="showEditModal"
             :space-id="currentSpace.id"
             :node="selectedNode"
+            :node-types="nodeTypes"
+            :all-nodes="nodes"
             @close="showEditModal = false"
             @submit="handleEditNode"
             @remove-attachment="handleRemoveAttachment"
@@ -1557,6 +1587,14 @@ async function handleDeleteSpace(spaceId: number) {
         <TeamManagerModal
             v-if="showTeamManager"
             @close="showTeamManager = false"
+        />
+
+        <NodeTypeManagerModal
+            v-if="showNodeTypesModal"
+            :space-id="currentSpace.id"
+            :node-types="nodeTypes"
+            @close="showNodeTypesModal = false"
+            @changed="loadNodeTypes"
         />
 
         <SpaceActivityLogModal

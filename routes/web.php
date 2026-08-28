@@ -16,6 +16,7 @@ use App\Http\Controllers\NodeDiscussController;
 use App\Http\Controllers\NodeLinkSuggestionController;
 use App\Http\Controllers\NodeLockController;
 use App\Http\Controllers\NodeTreeSettingsController;
+use App\Http\Controllers\NodeTypeController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PublicShareController;
 use App\Http\Controllers\PushSubscriptionController;
@@ -107,6 +108,11 @@ Route::middleware('auth')->group(function () {
             Route::get('/export/markdown', [SpaceController::class, 'exportMarkdown'])->middleware('throttle:export');
             Route::get('/export/pdf', [SpaceController::class, 'exportPdf'])->middleware('throttle:export');
             Route::get('/graph', [GraphController::class, 'fetchGraph']);
+            // Для пикера значения поля-связи (NodeTypeFieldsEditor) — своя
+            // ручка, не переиспользует SearchController::index() (тот ищет
+            // по ВСЕМ доступным пространствам разом, тут нужен явный скоуп на одно).
+            Route::get('/nodes/search', [GraphController::class, 'searchNodes']);
+            Route::get('/node-types', [NodeTypeController::class, 'index']);
             Route::get('/nodes/{node}/logo', [GraphController::class, 'logo']);
             Route::get('/attachments/search', [AttachmentController::class, 'search'])->middleware('throttle:search');
             Route::get('/nodes/{node}/attachments/{attachment}/download', [AttachmentController::class, 'download']);
@@ -139,6 +145,10 @@ Route::middleware('auth')->group(function () {
                 Route::delete('/nodes/{node}/lock', [NodeLockController::class, 'destroy']);
                 Route::put('/nodes/{node}/tree-settings', [NodeTreeSettingsController::class, 'update']);
                 Route::post('/nodes/{node}/logo', [GraphController::class, 'uploadLogo']);
+
+                Route::post('/node-types', [NodeTypeController::class, 'store']);
+                Route::put('/node-types/{nodeType}', [NodeTypeController::class, 'update']);
+                Route::delete('/node-types/{nodeType}', [NodeTypeController::class, 'destroy']);
 
                 Route::post('/nodes/{node}/attachments', [AttachmentController::class, 'store'])->middleware('throttle:uploads');
                 Route::put('/nodes/{node}/attachments/{attachment}/content', [AttachmentController::class, 'updateContent']);

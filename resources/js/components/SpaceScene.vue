@@ -29,10 +29,47 @@ export interface NodeData {
     attachments?: AttachmentData[];
     created_at: string;
     updated_at: string;
+    node_type_id: number | null;
+    custom_fields: Record<string, unknown> | null;
+    // Только у корневых узлов — подсказка для формы "добавить ребёнка"
+    // в этом дереве, не форсируется сервером (см. NodeTreeSettingsController).
+    default_node_type_id: number | null;
 }
 
 export type NodeShape =
     'circle' | 'square' | 'triangle' | 'diamond' | 'hexagon';
+
+/** Один пункт схемы пользовательского типа узла — см. NodeType::FIELD_KINDS на бэкенде. */
+export interface NodeTypeFieldSchema {
+    key: string;
+    label: string;
+    type:
+        | 'text'
+        | 'textarea'
+        | 'number'
+        | 'date'
+        | 'url'
+        | 'phone'
+        | 'checkbox'
+        | 'select'
+        | 'multiselect'
+        | 'relation'
+        | 'photo'
+        | 'files';
+    required?: boolean;
+    options?: string[];
+}
+
+/** Пользовательский тип узла — определяется внутри пространства, см. app/Models/NodeType.php. */
+export interface NodeTypeEntry {
+    id: number;
+    space_id: number;
+    key: string;
+    label: string;
+    icon: string | null;
+    color: string | null;
+    field_schema: NodeTypeFieldSchema[] | null;
+}
 
 /** Файл или ссылка, прикреплённые к узлу. */
 export interface AttachmentData {

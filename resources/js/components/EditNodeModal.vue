@@ -1,18 +1,21 @@
 <script setup lang="ts">
 import { X, Edit3, Lock, Palette, Tag } from 'lucide-vue-next';
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { apiFetch } from '../lib/api';
 import { fill, useT } from '../lib/i18n';
 import AttachmentEditor from './AttachmentEditor.vue';
 import type { PendingAttachment } from './AttachmentEditor.vue';
 import MapFields from './MapFields.vue';
+import NodeTypeFieldsEditor from './NodeTypeFieldsEditor.vue';
 import PositionFields from './PositionFields.vue';
 import ShapeFields from './ShapeFields.vue';
-import type { NodeData, NodeShape } from './SpaceScene.vue';
+import type { NodeData, NodeShape, NodeTypeEntry } from './SpaceScene.vue';
 
 const props = defineProps<{
     spaceId: number;
     node: NodeData | null;
+    nodeTypes: NodeTypeEntry[];
+    allNodes: NodeData[];
 }>();
 
 const t = useT();
@@ -35,6 +38,8 @@ const emit = defineEmits<{
             shape: NodeShape;
             logoFile: File | null;
             pending: PendingAttachment[];
+            node_type_id: number | null;
+            custom_fields: Record<string, unknown>;
         },
     ): void;
     (e: 'remove-attachment', attachmentId: number): void;
@@ -52,6 +57,11 @@ const posY = ref('');
 const shape = ref<NodeShape>('circle');
 const logoFile = ref<File | null>(null);
 const pending = ref<PendingAttachment[]>([]);
+const selectedTypeId = ref<number | null>(null);
+const customFieldValues = ref<Record<string, unknown>>({});
+const selectedType = computed(
+    () => props.nodeTypes.find((nt) => nt.id === selectedTypeId.value) ?? null,
+);
 
 /**
  * Жёсткая блокировка — захватывается при открытии, отпускается при любом
@@ -147,6 +157,10 @@ watch(
             shape.value = newNode.shape || 'circle';
             logoFile.value = null;
             pending.value = [];
+            selectedTypeId.value = newNode.node_type_id;
+            customFieldValues.value = newNode.custom_fields
+                ? { ...newNode.custom_fields }
+                : {};
         }
     },
     { immediate: true },
@@ -171,6 +185,8 @@ function handleSubmit() {
         shape: shape.value,
         logoFile: logoFile.value,
         pending: pending.value,
+        node_type_id: selectedTypeId.value,
+        custom_fields: customFieldValues.value,
     });
 }
 </script>
@@ -253,6 +269,39 @@ function handleSubmit() {
                     />
                 </div>
 
+                <div v-if="nodeTypes.length">
+                    <label class="mb-1 block font-semibold text-slate-300">{{
+                        t.nodeTypeSectionLabel
+                    }}</label>
+                    <select
+                        v-model="selectedTypeId"
+                        @change="customFieldValues = {}"
+                        class="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-100 focus:border-blue-500 focus:outline-none"
+                    >
+                        <option :value="null">{{ t.noTypeOption }}</option>
+                        <option
+                            v-for="nt in nodeTypes"
+                            :key="nt.id"
+                            :value="nt.id"
+                        >
+                            {{ nt.icon ? `${nt.icon} ` : '' }}{{ nt.label }}
+                        </option>
+                    </select>
+                </div>
+
+                <NodeTypeFieldsEditor
+                    v-if="selectedType"
+                    v-model:values="customFieldValues"
+                    v-model:logo-file="logoFile"
+                    v-model:pending="pending"
+                    :schema="selectedType.field_schema ?? []"
+                    :space-id="spaceId"
+                    :all-nodes="allNodes"
+                    :existing-logo-url="node?.logo_url"
+                    :saved-attachments="node?.attachments"
+                    @remove-saved-attachment="emit('remove-attachment', $event)"
+                />
+
                 <div>
                     <label
                         class="mb-1.5 block flex items-center gap-1.5 font-semibold text-slate-300"
@@ -298,29 +347,38 @@ function handleSubmit() {
                     />
                 </div>
 
-                <MapFields
-                    v-model:lat="mapLat"
-                    v-model:lon="mapLon"
-                    v-model:map-title="mapTitle"
-                />
-
-                <PositionFields
-                    v-if="node?.depth === 0"
-                    v-model:pos-x="posX"
-                    v-model:pos-y="posY"
-                />
-
                 <ShapeFields
                     v-model:shape="shape"
                     v-model:logo-file="logoFile"
                     :existing-logo-url="node?.logo_url"
                 />
 
-                <AttachmentEditor
-                    v-model:pending="pending"
-                    :saved="node?.attachments"
-                    @remove-saved="emit('remove-attachment', $event)"
-                />
+                <details class="group">
+                    <summary
+                        class="cursor-pointer list-none font-semibold text-slate-400 hover:text-slate-200"
+                    >
+                        {{ t.moreFieldsToggle }}
+                    </summary>
+                    <div class="mt-3 space-y-3.5">
+                        <MapFields
+                            v-model:lat="mapLat"
+                            v-model:lon="mapLon"
+                            v-model:map-title="mapTitle"
+                        />
+
+                        <PositionFields
+                            v-if="node?.depth === 0"
+                            v-model:pos-x="posX"
+                            v-model:pos-y="posY"
+                        />
+
+                        <AttachmentEditor
+                            v-model:pending="pending"
+                            :saved="node?.attachments"
+                            @remove-saved="emit('remove-attachment', $event)"
+                        />
+                    </div>
+                </details>
             </div>
 
             <div

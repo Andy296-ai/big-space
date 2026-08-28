@@ -340,6 +340,54 @@ export type TranslationKeys = {
     globalSearchHint: string;
     globalSearchAction: string;
     globalSearchFoundByMeaning: string;
+    relationFieldPlaceholder: string;
+    clearAction: string;
+    nodeTypesManagerAction: string;
+    nodeTypesManagerHint: string;
+    newNodeTypeAction: string;
+    noNodeTypesEmpty: string;
+    nodeTypeKeyLabel: string;
+    nodeTypeKeyHint: string;
+    nodeTypeLabelField: string;
+    nodeTypeIconLabel: string;
+    fieldsSectionLabel: string;
+    addFieldAction: string;
+    removeFieldAction: string;
+    fieldKeyLabel: string;
+    fieldLabelLabel: string;
+    fieldTypeLabel: string;
+    fieldRequiredLabel: string;
+    fieldOptionsLabel: string;
+    fieldKindText: string;
+    fieldKindTextarea: string;
+    fieldKindNumber: string;
+    fieldKindDate: string;
+    fieldKindUrl: string;
+    fieldKindPhone: string;
+    fieldKindCheckbox: string;
+    fieldKindSelect: string;
+    fieldKindMultiselect: string;
+    fieldKindRelation: string;
+    fieldKindPhoto: string;
+    fieldKindFiles: string;
+    noTypeOption: string;
+    nodeTypeSectionLabel: string;
+    moreFieldsToggle: string;
+    confirmDeleteNodeType: string;
+    booleanYesLabel: string;
+    booleanNoLabel: string;
+    relationStaleLabel: string;
+    spaceTemplateSectionLabel: string;
+    templateBlankLabel: string;
+    templateBlankDesc: string;
+    templateJobSearchLabel: string;
+    templateJobSearchDesc: string;
+    templateContactsLabel: string;
+    templateContactsDesc: string;
+    templateProjectLabel: string;
+    templateProjectDesc: string;
+    templateKnowledgeBaseLabel: string;
+    templateKnowledgeBaseDesc: string;
     nodeHistoryTitle: string;
     nodeHistoryDesc: string;
     nodeHistoryEmpty: string;
@@ -728,6 +776,62 @@ export const translations: Record<Language, TranslationKeys> = {
         globalSearchHint: 'Type at least 2 characters to search everywhere.',
         globalSearchAction: 'Search everywhere',
         globalSearchFoundByMeaning: 'Found by meaning',
+        relationFieldPlaceholder: 'Search for a node...',
+        clearAction: 'Clear',
+        nodeTypesManagerAction: 'Node types',
+        nodeTypesManagerHint:
+            'Define reusable types with custom fields for nodes in this space.',
+        newNodeTypeAction: 'New type',
+        noNodeTypesEmpty:
+            'No node types yet — create one to start tailoring forms to what you actually store.',
+        nodeTypeKeyLabel: 'Key',
+        nodeTypeKeyHint:
+            'Stable machine key, e.g. "contact" — used by export/import.',
+        nodeTypeLabelField: 'Label',
+        nodeTypeIconLabel: 'Icon (emoji)',
+        fieldsSectionLabel: 'Fields',
+        addFieldAction: 'Add field',
+        removeFieldAction: 'Remove field',
+        fieldKeyLabel: 'Key',
+        fieldLabelLabel: 'Label',
+        fieldTypeLabel: 'Type',
+        fieldRequiredLabel: 'Required',
+        fieldOptionsLabel: 'Options (comma-separated)',
+        fieldKindText: 'Text',
+        fieldKindTextarea: 'Long text',
+        fieldKindNumber: 'Number',
+        fieldKindDate: 'Date',
+        fieldKindUrl: 'URL',
+        fieldKindPhone: 'Phone',
+        fieldKindCheckbox: 'Checkbox',
+        fieldKindSelect: 'Select',
+        fieldKindMultiselect: 'Multi-select',
+        fieldKindRelation: 'Relation (link to a node)',
+        fieldKindPhoto: 'Photo (uses the node logo)',
+        fieldKindFiles: 'Files (uses attachments)',
+        noTypeOption: 'No type (generic node)',
+        nodeTypeSectionLabel: 'Type',
+        moreFieldsToggle: 'More fields',
+        confirmDeleteNodeType:
+            'Delete this node type? Existing nodes keep their data but lose this type.',
+        booleanYesLabel: 'Yes',
+        booleanNoLabel: 'No',
+        relationStaleLabel: 'Referenced node was deleted',
+        spaceTemplateSectionLabel: 'Start from',
+        templateBlankLabel: 'Blank',
+        templateBlankDesc: 'A single empty Origin node — build it up yourself.',
+        templateJobSearchLabel: 'Job search',
+        templateJobSearchDesc:
+            'Platforms, regions, and contacts — with address, phone, and files of what was done.',
+        templateContactsLabel: 'Contacts',
+        templateContactsDesc:
+            'People you need to keep track of — phone, where you met them, photo, address.',
+        templateProjectLabel: 'Project',
+        templateProjectDesc:
+            'Tasks with a status and due date, milestones, and how they relate.',
+        templateKnowledgeBaseLabel: 'Knowledge base',
+        templateKnowledgeBaseDesc:
+            'Articles and notes with a source link and a short summary.',
         nodeHistoryTitle: 'Edit history',
         nodeHistoryDesc: 'Snapshots taken before each change',
         nodeHistoryEmpty: 'No edits yet.',
@@ -1125,6 +1229,62 @@ export const translations: Record<Language, TranslationKeys> = {
         globalSearchHint: 'Введите минимум 2 символа для поиска везде.',
         globalSearchAction: 'Искать везде',
         globalSearchFoundByMeaning: 'Найдено по смыслу',
+        relationFieldPlaceholder: 'Поиск узла...',
+        clearAction: 'Очистить',
+        nodeTypesManagerAction: 'Типы узлов',
+        nodeTypesManagerHint:
+            'Определите переиспользуемые типы с пользовательскими полями для узлов этого пространства.',
+        newNodeTypeAction: 'Новый тип',
+        noNodeTypesEmpty:
+            'Пока нет типов узлов — создайте свой, чтобы форма показывала только нужные поля.',
+        nodeTypeKeyLabel: 'Ключ',
+        nodeTypeKeyHint:
+            'Устойчивый машинный ключ, например «contact» — используется при экспорте/импорте.',
+        nodeTypeLabelField: 'Название',
+        nodeTypeIconLabel: 'Иконка (эмодзи)',
+        fieldsSectionLabel: 'Поля',
+        addFieldAction: 'Добавить поле',
+        removeFieldAction: 'Удалить поле',
+        fieldKeyLabel: 'Ключ',
+        fieldLabelLabel: 'Название',
+        fieldTypeLabel: 'Тип',
+        fieldRequiredLabel: 'Обязательное',
+        fieldOptionsLabel: 'Варианты (через запятую)',
+        fieldKindText: 'Текст',
+        fieldKindTextarea: 'Длинный текст',
+        fieldKindNumber: 'Число',
+        fieldKindDate: 'Дата',
+        fieldKindUrl: 'Ссылка',
+        fieldKindPhone: 'Телефон',
+        fieldKindCheckbox: 'Флажок',
+        fieldKindSelect: 'Выбор',
+        fieldKindMultiselect: 'Множественный выбор',
+        fieldKindRelation: 'Связь (ссылка на узел)',
+        fieldKindPhoto: 'Фото (использует логотип узла)',
+        fieldKindFiles: 'Файлы (использует вложения)',
+        noTypeOption: 'Без типа (обычный узел)',
+        nodeTypeSectionLabel: 'Тип',
+        moreFieldsToggle: 'Больше полей',
+        confirmDeleteNodeType:
+            'Удалить этот тип узла? Существующие узлы сохранят данные, но потеряют тип.',
+        booleanYesLabel: 'Да',
+        booleanNoLabel: 'Нет',
+        relationStaleLabel: 'Связанный узел был удалён',
+        spaceTemplateSectionLabel: 'Начать с',
+        templateBlankLabel: 'Пусто',
+        templateBlankDesc: 'Один пустой узел Origin — заполните сами.',
+        templateJobSearchLabel: 'Поиск работы',
+        templateJobSearchDesc:
+            'Платформы, регионы и контакты — с адресом, телефоном и файлами о проделанной работе.',
+        templateContactsLabel: 'Контакты',
+        templateContactsDesc:
+            'Люди, за которыми нужно следить — телефон, где познакомились, фото, адрес.',
+        templateProjectLabel: 'Проект',
+        templateProjectDesc:
+            'Задачи со статусом и сроком, вехи и связи между ними.',
+        templateKnowledgeBaseLabel: 'База знаний',
+        templateKnowledgeBaseDesc:
+            'Статьи и заметки с источником и кратким описанием.',
         nodeHistoryTitle: 'История изменений',
         nodeHistoryDesc: 'Снимки состояния перед каждой правкой',
         nodeHistoryEmpty: 'Правок пока не было.',
@@ -1524,6 +1684,62 @@ export const translations: Record<Language, TranslationKeys> = {
             'Барои ҷустуҷӯ дар ҳама ҷо на кам аз 2 аломат ворид кунед.',
         globalSearchAction: 'Ҷустуҷӯ дар ҳама ҷо',
         globalSearchFoundByMeaning: 'Аз рӯи маъно ёфт шуд',
+        relationFieldPlaceholder: 'Ҷустуҷӯи гиреҳ...',
+        clearAction: 'Пок кардан',
+        nodeTypesManagerAction: 'Намудҳои гиреҳ',
+        nodeTypesManagerHint:
+            'Намудҳои такроршавандаро бо майдонҳои фармоишӣ барои гиреҳҳои ин фазо муайян кунед.',
+        newNodeTypeAction: 'Намуди нав',
+        noNodeTypesEmpty:
+            'Ҳанӯз намуди гиреҳ нест — якеро эҷод кунед, то шакл танҳо майдонҳои лозимиро нишон диҳад.',
+        nodeTypeKeyLabel: 'Калид',
+        nodeTypeKeyHint:
+            'Калиди устувори мошинӣ, масалан «contact» — барои содирот/воридот истифода мешавад.',
+        nodeTypeLabelField: 'Ном',
+        nodeTypeIconLabel: 'Нишона (эмоҷи)',
+        fieldsSectionLabel: 'Майдонҳо',
+        addFieldAction: 'Илова кардани майдон',
+        removeFieldAction: 'Хориҷ кардани майдон',
+        fieldKeyLabel: 'Калид',
+        fieldLabelLabel: 'Ном',
+        fieldTypeLabel: 'Намуд',
+        fieldRequiredLabel: 'Ҳатмӣ',
+        fieldOptionsLabel: 'Вариантҳо (бо вергул)',
+        fieldKindText: 'Матн',
+        fieldKindTextarea: 'Матни дароз',
+        fieldKindNumber: 'Рақам',
+        fieldKindDate: 'Сана',
+        fieldKindUrl: 'Пайванд',
+        fieldKindPhone: 'Телефон',
+        fieldKindCheckbox: 'Байрақча',
+        fieldKindSelect: 'Интихоб',
+        fieldKindMultiselect: 'Интихоби бисёркарата',
+        fieldKindRelation: 'Алоқа (пайванд ба гиреҳ)',
+        fieldKindPhoto: 'Акс (логотипи гиреҳро истифода мебарад)',
+        fieldKindFiles: 'Файлҳо (замимаҳоро истифода мебарад)',
+        noTypeOption: 'Бе намуд (гиреҳи оддӣ)',
+        nodeTypeSectionLabel: 'Намуд',
+        moreFieldsToggle: 'Майдонҳои бештар',
+        confirmDeleteNodeType:
+            'Ин намуди гиреҳро нест кунам? Гиреҳҳои мавҷуда маълумоти худро нигоҳ медоранд, аммо намудро гум мекунанд.',
+        booleanYesLabel: 'Ҳа',
+        booleanNoLabel: 'Не',
+        relationStaleLabel: 'Гиреҳи пайвастшуда нест карда шудааст',
+        spaceTemplateSectionLabel: 'Оғоз аз',
+        templateBlankLabel: 'Холӣ',
+        templateBlankDesc: 'Як гиреҳи холии Origin — худатон пур кунед.',
+        templateJobSearchLabel: 'Ҷустуҷӯи кор',
+        templateJobSearchDesc:
+            'Платформаҳо, минтақаҳо ва тамосҳо — бо суроға, телефон ва файлҳои корҳои иҷрошуда.',
+        templateContactsLabel: 'Тамосҳо',
+        templateContactsDesc:
+            'Одамоне, ки бояд пайгирӣ кунед — телефон, ҷои вохӯрӣ, акс, суроға.',
+        templateProjectLabel: 'Лоиҳа',
+        templateProjectDesc:
+            'Вазифаҳо бо ҳолат ва мӯҳлат, марҳилаҳо ва алоқаи байни онҳо.',
+        templateKnowledgeBaseLabel: 'Пойгоҳи дониш',
+        templateKnowledgeBaseDesc:
+            'Мақолаҳо ва ёддоштҳо бо манбаъ ва тавсифи кӯтоҳ.',
         nodeHistoryTitle: 'Таърихи тағйирот',
         nodeHistoryDesc: 'Аксҳо пеш аз ҳар тағйирот',
         nodeHistoryEmpty: 'Ҳанӯз тағйирот набудааст.',
@@ -1922,6 +2138,61 @@ export const translations: Record<Language, TranslationKeys> = {
         globalSearchHint: 'برای جستجو در همه‌جا حداقل ۲ نویسه وارد کنید.',
         globalSearchAction: 'جستجو در همه‌جا',
         globalSearchFoundByMeaning: 'یافت‌شده بر اساس معنا',
+        relationFieldPlaceholder: 'جستجوی گره...',
+        clearAction: 'پاک کردن',
+        nodeTypesManagerAction: 'انواع گره',
+        nodeTypesManagerHint:
+            'انواع قابل استفاده مجدد را با فیلدهای سفارشی برای گره‌های این فضا تعریف کنید.',
+        newNodeTypeAction: 'نوع جدید',
+        noNodeTypesEmpty:
+            'هنوز نوع گرهی وجود ندارد — یکی بسازید تا فرم فقط فیلدهای لازم را نشان دهد.',
+        nodeTypeKeyLabel: 'کلید',
+        nodeTypeKeyHint:
+            'کلید ماشینی ثابت، مثلاً «contact» — در خروجی/ورودی استفاده می‌شود.',
+        nodeTypeLabelField: 'برچسب',
+        nodeTypeIconLabel: 'نماد (ایموجی)',
+        fieldsSectionLabel: 'فیلدها',
+        addFieldAction: 'افزودن فیلد',
+        removeFieldAction: 'حذف فیلد',
+        fieldKeyLabel: 'کلید',
+        fieldLabelLabel: 'برچسب',
+        fieldTypeLabel: 'نوع',
+        fieldRequiredLabel: 'الزامی',
+        fieldOptionsLabel: 'گزینه‌ها (با کاما جدا شود)',
+        fieldKindText: 'متن',
+        fieldKindTextarea: 'متن بلند',
+        fieldKindNumber: 'عدد',
+        fieldKindDate: 'تاریخ',
+        fieldKindUrl: 'پیوند',
+        fieldKindPhone: 'تلفن',
+        fieldKindCheckbox: 'چک‌باکس',
+        fieldKindSelect: 'انتخاب',
+        fieldKindMultiselect: 'چندانتخابی',
+        fieldKindRelation: 'رابطه (پیوند به گره)',
+        fieldKindPhoto: 'عکس (از لوگوی گره استفاده می‌کند)',
+        fieldKindFiles: 'فایل‌ها (از پیوست‌ها استفاده می‌کند)',
+        noTypeOption: 'بدون نوع (گره عمومی)',
+        nodeTypeSectionLabel: 'نوع',
+        moreFieldsToggle: 'فیلدهای بیشتر',
+        confirmDeleteNodeType:
+            'این نوع گره حذف شود؟ گره‌های موجود داده‌های خود را حفظ می‌کنند اما این نوع را از دست می‌دهند.',
+        booleanYesLabel: 'بله',
+        booleanNoLabel: 'خیر',
+        relationStaleLabel: 'گره پیوندشده حذف شده است',
+        spaceTemplateSectionLabel: 'شروع از',
+        templateBlankLabel: 'خالی',
+        templateBlankDesc: 'یک گره خالی Origin — خودتان تکمیل کنید.',
+        templateJobSearchLabel: 'جستجوی کار',
+        templateJobSearchDesc:
+            'پلتفرم‌ها، مناطق و مخاطبین — با آدرس، تلفن و فایل‌های کارهای انجام‌شده.',
+        templateContactsLabel: 'مخاطبین',
+        templateContactsDesc:
+            'افرادی که باید پیگیری کنید — تلفن، محل آشنایی، عکس، آدرس.',
+        templateProjectLabel: 'پروژه',
+        templateProjectDesc:
+            'وظایف با وضعیت و مهلت، نقاط عطف و ارتباط بین آن‌ها.',
+        templateKnowledgeBaseLabel: 'پایگاه دانش',
+        templateKnowledgeBaseDesc: 'مقالات و یادداشت‌ها با منبع و خلاصه کوتاه.',
         nodeHistoryTitle: 'تاریخچه ویرایش',
         nodeHistoryDesc: 'عکس‌های وضعیت پیش از هر تغییر',
         nodeHistoryEmpty: 'هنوز ویرایشی انجام نشده است.',

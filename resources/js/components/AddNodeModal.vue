@@ -1,18 +1,22 @@
 <script setup lang="ts">
 import { X, Plus, Palette, Tag, UserPlus } from 'lucide-vue-next';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useT } from '../lib/i18n';
 import AttachmentEditor from './AttachmentEditor.vue';
 import type { PendingAttachment } from './AttachmentEditor.vue';
 import MapFields from './MapFields.vue';
+import NodeTypeFieldsEditor from './NodeTypeFieldsEditor.vue';
 import PositionFields from './PositionFields.vue';
 import ShapeFields from './ShapeFields.vue';
-import type { NodeData, NodeShape } from './SpaceScene.vue';
+import type { NodeData, NodeShape, NodeTypeEntry } from './SpaceScene.vue';
 
 const props = defineProps<{
     parentNode: NodeData | null;
     /** В Admin-пространстве «Добавить корень» создаёт не узел, а пользователя. */
     isAdminSpace?: boolean;
+    spaceId: number;
+    nodeTypes: NodeTypeEntry[];
+    allNodes: NodeData[];
 }>();
 
 const t = useT();
@@ -34,6 +38,8 @@ const emit = defineEmits<{
             shape: NodeShape;
             logoFile: File | null;
             pending: PendingAttachment[];
+            node_type_id: number | null;
+            custom_fields: Record<string, unknown>;
         },
     ): void;
     (
@@ -68,6 +74,22 @@ const pending = ref<PendingAttachment[]>([]);
 const username = ref('');
 const email = ref('');
 const password = ref('');
+
+/** Каскадный намёк с родителя (см. default_node_type_id) — только
+ * предзаполнение на фронте, сервер его не форсирует. */
+const selectedTypeId = ref<number | null>(
+    props.parentNode?.default_node_type_id ?? null,
+);
+const customFieldValues = ref<Record<string, unknown>>({});
+const selectedType = computed(
+    () => props.nodeTypes.find((nt) => nt.id === selectedTypeId.value) ?? null,
+);
+
+/** Смена типа — старые значения полей больше не имеют смысла (сервер их всё
+ * равно пересчитает с нуля, см. NodeTypeFieldValidator::sanitize()). */
+watch(selectedTypeId, () => {
+    customFieldValues.value = {};
+});
 
 /** Пустое поле означает «точки нет», а не ноль. */
 function toCoord(value: string): number | null {
@@ -132,6 +154,8 @@ function handleSubmit() {
         shape: shape.value,
         logoFile: logoFile.value,
         pending: pending.value,
+        node_type_id: selectedTypeId.value,
+        custom_fields: customFieldValues.value,
     });
 }
 </script>
@@ -242,17 +266,52 @@ function handleSubmit() {
                     </div>
                 </template>
 
-                <div v-else>
-                    <label class="mb-1 block font-semibold text-slate-300">{{
-                        t.descriptionLabel
-                    }}</label>
-                    <textarea
-                        v-model="description"
-                        rows="3"
-                        :placeholder="t.nodeDetailsPlaceholder"
-                        class="w-full resize-none rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-100 focus:border-blue-500 focus:outline-none"
+                <template v-else>
+                    <div>
+                        <label
+                            class="mb-1 block font-semibold text-slate-300"
+                            >{{ t.descriptionLabel }}</label
+                        >
+                        <textarea
+                            v-model="description"
+                            rows="3"
+                            :placeholder="t.nodeDetailsPlaceholder"
+                            class="w-full resize-none rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-100 focus:border-blue-500 focus:outline-none"
+                        />
+                    </div>
+
+                    <div v-if="nodeTypes.length">
+                        <label
+                            class="mb-1 block font-semibold text-slate-300"
+                            >{{ t.nodeTypeSectionLabel }}</label
+                        >
+                        <select
+                            v-model="selectedTypeId"
+                            class="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-100 focus:border-blue-500 focus:outline-none"
+                        >
+                            <option :value="null">
+                                {{ t.noTypeOption }}
+                            </option>
+                            <option
+                                v-for="nt in nodeTypes"
+                                :key="nt.id"
+                                :value="nt.id"
+                            >
+                                {{ nt.icon ? `${nt.icon} ` : '' }}{{ nt.label }}
+                            </option>
+                        </select>
+                    </div>
+
+                    <NodeTypeFieldsEditor
+                        v-if="selectedType"
+                        v-model:values="customFieldValues"
+                        v-model:logo-file="logoFile"
+                        v-model:pending="pending"
+                        :schema="selectedType.field_schema ?? []"
+                        :space-id="spaceId"
+                        :all-nodes="allNodes"
                     />
-                </div>
+                </template>
 
                 <div>
                     <label
@@ -299,29 +358,33 @@ function handleSubmit() {
                     />
                 </div>
 
-                <template v-if="!isUserForm">
-                    <MapFields
-                        v-model:lat="mapLat"
-                        v-model:lon="mapLon"
-                        v-model:map-title="mapTitle"
-                    />
-
-                    <PositionFields
-                        v-if="!parentNode"
-                        v-model:pos-x="posX"
-                        v-model:pos-y="posY"
-                    />
-                </template>
-
                 <ShapeFields
                     v-model:shape="shape"
                     v-model:logo-file="logoFile"
                 />
 
-                <AttachmentEditor
-                    v-if="!isUserForm"
-                    v-model:pending="pending"
-                />
+                <details v-if="!isUserForm" class="group">
+                    <summary
+                        class="cursor-pointer list-none font-semibold text-slate-400 hover:text-slate-200"
+                    >
+                        {{ t.moreFieldsToggle }}
+                    </summary>
+                    <div class="mt-3 space-y-3.5">
+                        <MapFields
+                            v-model:lat="mapLat"
+                            v-model:lon="mapLon"
+                            v-model:map-title="mapTitle"
+                        />
+
+                        <PositionFields
+                            v-if="!parentNode"
+                            v-model:pos-x="posX"
+                            v-model:pos-y="posY"
+                        />
+
+                        <AttachmentEditor v-model:pending="pending" />
+                    </div>
+                </details>
             </div>
 
             <div

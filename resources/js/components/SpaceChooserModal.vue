@@ -111,7 +111,10 @@ async function onFileChosen(event: Event) {
 const emit = defineEmits<{
     (e: 'close'): void;
     (e: 'select-space', space: SpaceItem): void;
-    (e: 'create-space', payload: { name: string; description: string }): void;
+    (
+        e: 'create-space',
+        payload: { name: string; description: string; template?: string },
+    ): void;
     (e: 'delete-space', spaceId: number): void;
     (e: 'import-space', payload: unknown): void;
     (e: 'open-share', space: SpaceItem): void;
@@ -120,6 +123,45 @@ const emit = defineEmits<{
 const isCreating = ref(false);
 const newName = ref('');
 const newDescription = ref('');
+const newTemplate = ref<string | null>(null);
+
+/** Ключи должны совпадать с config/space_templates.php — подписи и описания
+ * идут через переводы, а не английский текст из конфига, поэтому список
+ * продублирован здесь, а не подтягивается отдельным запросом. */
+const SPACE_TEMPLATES: {
+    key: string;
+    labelKey:
+        | 'templateJobSearchLabel'
+        | 'templateContactsLabel'
+        | 'templateProjectLabel'
+        | 'templateKnowledgeBaseLabel';
+    descKey:
+        | 'templateJobSearchDesc'
+        | 'templateContactsDesc'
+        | 'templateProjectDesc'
+        | 'templateKnowledgeBaseDesc';
+}[] = [
+    {
+        key: 'job_search',
+        labelKey: 'templateJobSearchLabel',
+        descKey: 'templateJobSearchDesc',
+    },
+    {
+        key: 'contacts',
+        labelKey: 'templateContactsLabel',
+        descKey: 'templateContactsDesc',
+    },
+    {
+        key: 'project',
+        labelKey: 'templateProjectLabel',
+        descKey: 'templateProjectDesc',
+    },
+    {
+        key: 'knowledge_base',
+        labelKey: 'templateKnowledgeBaseLabel',
+        descKey: 'templateKnowledgeBaseDesc',
+    },
+];
 
 function handleCreate() {
     if (!newName.value.trim()) {
@@ -129,9 +171,11 @@ function handleCreate() {
     emit('create-space', {
         name: newName.value.trim(),
         description: newDescription.value.trim(),
+        template: newTemplate.value ?? undefined,
     });
     newName.value = '';
     newDescription.value = '';
+    newTemplate.value = null;
     isCreating.value = false;
 }
 </script>
@@ -281,6 +325,49 @@ function handleCreate() {
                         class="w-full resize-none rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-100 focus:border-blue-500 focus:outline-none"
                     />
                 </div>
+                <div>
+                    <label class="mb-1.5 block font-semibold text-slate-300">{{
+                        t.spaceTemplateSectionLabel
+                    }}</label>
+                    <div class="grid grid-cols-2 gap-1.5">
+                        <button
+                            type="button"
+                            @click="newTemplate = null"
+                            class="rounded-xl border p-2 text-start transition-colors"
+                            :class="
+                                newTemplate === null
+                                    ? 'border-blue-500 bg-blue-600/10'
+                                    : 'border-slate-700 bg-slate-800/60 hover:border-slate-600'
+                            "
+                        >
+                            <div class="font-semibold text-slate-100">
+                                {{ t.templateBlankLabel }}
+                            </div>
+                            <div class="mt-0.5 text-[10px] text-slate-400">
+                                {{ t.templateBlankDesc }}
+                            </div>
+                        </button>
+                        <button
+                            v-for="tpl in SPACE_TEMPLATES"
+                            :key="tpl.key"
+                            type="button"
+                            @click="newTemplate = tpl.key"
+                            class="rounded-xl border p-2 text-start transition-colors"
+                            :class="
+                                newTemplate === tpl.key
+                                    ? 'border-blue-500 bg-blue-600/10'
+                                    : 'border-slate-700 bg-slate-800/60 hover:border-slate-600'
+                            "
+                        >
+                            <div class="font-semibold text-slate-100">
+                                {{ t[tpl.labelKey] }}
+                            </div>
+                            <div class="mt-0.5 text-[10px] text-slate-400">
+                                {{ t[tpl.descKey] }}
+                            </div>
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <div
@@ -314,7 +401,10 @@ function handleCreate() {
 
                 <div v-if="isCreating" class="ml-auto flex items-center gap-2">
                     <button
-                        @click="isCreating = false"
+                        @click="
+                            isCreating = false;
+                            newTemplate = null;
+                        "
                         class="rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200"
                     >
                         {{ t.cancel }}

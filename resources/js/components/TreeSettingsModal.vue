@@ -12,11 +12,12 @@ import {
 import { ref, watch } from 'vue';
 import { apiFetch } from '../lib/api';
 import { useT } from '../lib/i18n';
-import type { NodeData, NodeShape } from './SpaceScene.vue';
+import type { NodeData, NodeShape, NodeTypeEntry } from './SpaceScene.vue';
 
 const props = defineProps<{
     spaceId: number;
     node: NodeData;
+    nodeTypes: NodeTypeEntry[];
 }>();
 
 const emit = defineEmits<{
@@ -28,6 +29,7 @@ const t = useT();
 
 const shape = ref<NodeShape>('circle');
 const color = ref('');
+const defaultTypeId = ref<number | null>(null);
 const saving = ref(false);
 const applying = ref(false);
 
@@ -36,6 +38,7 @@ watch(
     (node) => {
         shape.value = node.default_shape ?? 'circle';
         color.value = node.default_color ?? '';
+        defaultTypeId.value = node.default_node_type_id;
     },
     { immediate: true },
 );
@@ -85,6 +88,7 @@ async function submit(applyToAll: boolean) {
                 body: JSON.stringify({
                     default_shape: shape.value,
                     default_color: color.value || null,
+                    default_node_type_id: defaultTypeId.value,
                     apply_to_all: applyToAll,
                 }),
             },
@@ -189,6 +193,28 @@ async function submit(applyToAll: boolean) {
                                 {{ t.defaultColorNone }}
                             </button>
                         </div>
+                    </div>
+
+                    <div v-if="nodeTypes.length">
+                        <label
+                            class="mb-1.5 block font-semibold text-slate-300"
+                            >{{ t.nodeTypeSectionLabel }}</label
+                        >
+                        <select
+                            v-model="defaultTypeId"
+                            class="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-100 focus:border-blue-500 focus:outline-none"
+                        >
+                            <option :value="null">
+                                {{ t.noTypeOption }}
+                            </option>
+                            <option
+                                v-for="nt in nodeTypes"
+                                :key="nt.id"
+                                :value="nt.id"
+                            >
+                                {{ nt.icon ? `${nt.icon} ` : '' }}{{ nt.label }}
+                            </option>
+                        </select>
                     </div>
                 </div>
 

@@ -2,6 +2,7 @@
 
 use App\Models\Edge;
 use App\Models\Node;
+use App\Models\NodeType;
 use App\Models\Space;
 use App\Models\User;
 
@@ -63,6 +64,41 @@ test('a round trip rebuilds the same graph in a new space', function () {
     expect($again['edges'])->toBe($payload['edges']);
     expect(array_column($again['nodes'], 'title'))
         ->toBe(array_column($payload['nodes'], 'title'));
+});
+
+test('a round trip preserves node types and custom field values', function () {
+    $space = Space::create(['name' => 'Typed', 'slug' => 'typed-export']);
+    $contact = NodeType::create([
+        'space_id' => $space->id,
+        'key' => 'contact',
+        'label' => 'Contact',
+        'field_schema' => [
+            ['key' => 'phone', 'label' => 'Phone', 'type' => 'phone', 'required' => true],
+        ],
+    ]);
+    $node = Node::create([
+        'space_id' => $space->id,
+        'title' => 'Ada',
+        'depth' => 0,
+        'node_type_id' => $contact->id,
+        'custom_fields' => ['phone' => '+1 555 0100'],
+    ]);
+    $node->update(['tree_root_id' => $node->id]);
+
+    $payload = $this->getJson("/api/spaces/{$space->id}/export")->json();
+
+    expect($payload['node_types'])->toHaveCount(1);
+    expect($payload['node_types'][0]['key'])->toBe('contact');
+    expect($payload['nodes'][0]['node_type'])->toBe('contact');
+    expect($payload['nodes'][0]['custom_fields'])->toBe(['phone' => '+1 555 0100']);
+
+    $newId = $this->postJson('/api/spaces/import', $payload)->assertStatus(201)->json('id');
+
+    $importedType = NodeType::where('space_id', $newId)->where('key', 'contact')->firstOrFail();
+    $importedNode = Node::where('space_id', $newId)->where('title', 'Ada')->firstOrFail();
+
+    expect($importedNode->node_type_id)->toBe($importedType->id);
+    expect($importedNode->custom_fields)->toBe(['phone' => '+1 555 0100']);
 });
 
 test('import recomputes depth instead of trusting the file', function () {

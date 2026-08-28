@@ -24,12 +24,17 @@ class NodeTreeSettingsController extends Controller
         $validated = $request->validate([
             'default_shape' => ['nullable', Rule::in(Node::SHAPES)],
             'default_color' => 'nullable|string|max:32',
+            // Только подсказка для формы «добавить ребёнка» на фронте — в
+            // отличие от default_shape/default_color сервер её не форсирует
+            // (см. план "Flexible node types", §8).
+            'default_node_type_id' => ['nullable', Rule::exists('node_types', 'id')->where('space_id', $space->id)],
             'apply_to_all' => 'boolean',
         ]);
 
         $node->update([
             'default_shape' => $validated['default_shape'] ?? null,
             'default_color' => $validated['default_color'] ?? null,
+            'default_node_type_id' => $validated['default_node_type_id'] ?? null,
         ]);
 
         if ($validated['apply_to_all'] ?? false) {
